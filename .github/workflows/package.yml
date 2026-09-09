@@ -16,5 +16,3 @@ concurrency:
 jobs:
   build:
     uses: Start9Labs/start-technologies/.github/workflows/build.yml@f7dcde71be804af424350b48c8b73aba03f41321
-    secrets:
-      DEV_KEY: ${{ secrets.DEV_KEY }}

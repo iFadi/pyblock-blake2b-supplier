@@ -216,9 +216,9 @@ Outputs: `pyblock-blake2b-supplier_x86_64.s9pk` or `_aarch64.s9pk`.
 
 Pull requests, pushes to `main`, and manually dispatched Package workflow runs
 build both `.s9pk` variants with StartOS's official reusable build workflow.
-The outputs are temporary GitHub Actions artifacts. Trusted branches use the
-repository's `DEV_KEY` Actions secret when it is available; fork pull requests
-receive no repository secrets and therefore use an ephemeral signing key.
+The reusable workflow generates an ephemeral signing key for every Package
+workflow run. Its temporary GitHub Actions artifacts are intended only for
+verification and testing; they are not distributable release artifacts.
 
 Version tags matching `v<major>.<minor>.<patch>-rev<revision>` publish signed
 `.s9pk` files as assets on a GitHub Release. The tag must exactly match the
@@ -228,10 +228,12 @@ StartOS registry or S3 publication is configured. See
 [CONTRIBUTING.md](CONTRIBUTING.md#maintainer-release-runbook) for the maintainer
 runbook.
 
-`DEV_KEY` is signing material. Configure it as a GitHub Actions repository
-secret and never commit it, paste it into workflow files, or expose it in logs.
-Changing this repository's visibility is a separate manual administrative
-decision and is not part of the packaging or release workflows.
+Only the tag-triggered Release workflow uses the persistent repository
+`DEV_KEY`; its signed GitHub Release assets are the distributable release
+artifacts. Configure `DEV_KEY` as a GitHub Actions repository secret and never
+commit it, paste it into workflow files, or expose it in logs. Changing this
+repository's visibility is a separate manual administrative decision and is
+not part of the packaging or release workflows.
 
 ---
 
