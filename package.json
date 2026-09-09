@@ -14,10 +14,10 @@
   },
   "devDependencies": {
     "@types/node": "26.5.0",
-    "@vercel/ncc": "0.38.4",
+    "@vercel/ncc": "0.45.0",
     "brace-expansion-v1": "npm:brace-expansion@1.1.18",
     "brace-expansion-v5": "npm:brace-expansion@5.0.9",
     "js-yaml-patched": "npm:js-yaml@4.3.2",
-    "typescript": "6.0.3"
+    "typescript": "7.0.2"
   }
 }
