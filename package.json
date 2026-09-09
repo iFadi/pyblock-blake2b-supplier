@@ -1,0 +1,23 @@
+{
+  "name": "pyblock-blake2b-supplier-startos",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "postinstall": "node scripts/patch-bundled-advisories.js",
+    "check": "tsc --noEmit",
+    "test:ts": "rm -rf ./.test-dist && tsc -p tsconfig.tests.json && node --test .test-dist/tests-ts/*.test.js",
+    "test": "npm run test:ts",
+    "build": "rm -rf ./javascript && ncc build startos/index.ts -o ./javascript && find ./javascript -type d -exec chmod 0755 {} + && find ./javascript -type f -exec chmod 0644 {} +"
+  },
+  "dependencies": {
+    "@start9labs/start-sdk": "2.0.9"
+  },
+  "devDependencies": {
+    "@types/node": "26.5.0",
+    "@vercel/ncc": "0.38.4",
+    "brace-expansion-v1": "npm:brace-expansion@1.1.18",
+    "brace-expansion-v5": "npm:brace-expansion@5.0.9",
+    "js-yaml-patched": "npm:js-yaml@4.3.2",
+    "typescript": "6.0.3"
+  }
+}

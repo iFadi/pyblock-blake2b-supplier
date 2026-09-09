@@ -1,0 +1,24 @@
+# Tor configuration for pyblock-blake2b-supplier.
+#
+# This container uses Tor purely as an outbound SOCKS client for publishing
+# templates to PyBLOCK's onion service. It runs no hidden service and needs no
+# control connection.
+
+# Run in the foreground; the entrypoint supervises the process itself.
+RunAsDaemon 0
+
+DataDirectory /var/lib/tor
+
+# Loopback only. Nothing outside this container may use the proxy.
+SocksPort 127.0.0.1:9050
+SocksPolicy accept 127.0.0.1/32
+SocksPolicy reject *
+
+# This instance never serves as a relay or exit.
+ClientOnly 1
+
+# Deliberately NO ControlPort. An unauthenticated control port would let any
+# process in this container reconfigure Tor, open arbitrary circuits or read
+# the client's activity. Nothing here needs it, so it is not opened at all.
+
+Log notice stdout

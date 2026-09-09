@@ -1,0 +1,9 @@
+{
+  "extends": "@start9labs/start-sdk/tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "javascript",
+    "rootDir": "startos",
+    "paths": {}
+  },
+  "include": ["startos/**/*", "node_modules/@start9labs/start-sdk/startos/**/*"]
+}

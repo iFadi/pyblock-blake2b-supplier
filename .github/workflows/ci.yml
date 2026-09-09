@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install JavaScript dependencies
+        run: npm ci
+
+      - name: Audit postinstall-patched dependency tree for high/critical CVEs
+        run: npm audit --audit-level=high
+
+      - name: Type-check StartOS integration
+        run: npm run check
+
+      - name: Run TypeScript security regression tests
+        run: npm test
+
+      - name: Bundle StartOS integration
+        run: npm run build
+
+      - name: Run Python tests in the project test image
+        run: docker build --target test -t pyblock-blake2b-supplier-test .
+
+      - name: Build runtime image
+        run: docker build --target runtime -t pyblock-blake2b-supplier-runtime .
