@@ -226,7 +226,7 @@ have a fully immutable transitive action graph.
 Version tags matching `v<major>.<minor>.<patch>-rev<revision>` publish signed
 `.s9pk` files as assets on an initial GitHub **prerelease**. The local Release
 workflow validates the tag against the package ExVer in
-`startos/versions/current.ts` (`v1.0.0-rev6` maps to `1.0.0:6`), builds x86_64
+`startos/versions/current.ts` (`v1.0.0-rev7` maps to `1.0.0:7`), builds x86_64
 and aarch64 packages, verifies their manifests, and publishes `SHA256SUMS`
 alongside release notes sourced from the manifest. It uses only immutable
 action SHAs and checksum-verifies the exact StartOS `start-cli` v2.0.0 binaries

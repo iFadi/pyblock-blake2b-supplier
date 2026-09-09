@@ -65,9 +65,9 @@ references, so this accepted trust boundary is intentionally limited to
 non-secret, non-distributable Package builds.
 
 The Release workflow accepts only tags in the form
-`v<major>.<minor>.<patch>-rev<revision>` (for example, `v1.0.0-rev6`). It
+`v<major>.<minor>.<patch>-rev<revision>` (for example, `v1.0.0-rev7`). It
 requires an exact match between the tag and `startos/versions/current.ts`
-(`v1.0.0-rev6` maps to `1.0.0:6`), requires the `DEV_KEY` repository secret,
+(`v1.0.0-rev7` maps to `1.0.0:7`), requires the `DEV_KEY` repository secret,
 and creates an initial GitHub **prerelease** containing the signed x86_64 and
 aarch64 `.s9pk` files plus `SHA256SUMS`. Its local jobs pin every external
 action by immutable SHA and checksum-verify the exact `start-cli` v2.0.0
@@ -89,9 +89,9 @@ architectures, version, release notes, and any manifest git hash before using
    ```sh
    git switch main
    git pull --ff-only origin main
-   RELEASE_TAG=v1.0.0-rev6
+   RELEASE_TAG=v1.0.0-rev7
    printf '%s\n' "$RELEASE_TAG" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+-rev[0-9]+$'
-   grep -F "version: '1.0.0:6'" startos/versions/current.ts
+   grep -F "version: '1.0.0:7'" startos/versions/current.ts
    git ls-remote --exit-code --tags origin "refs/tags/$RELEASE_TAG" && {
      echo "Tag already exists on origin" >&2
      exit 1
