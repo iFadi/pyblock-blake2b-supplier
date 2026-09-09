@@ -9,8 +9,8 @@ The Docker image is built from the local `Dockerfile` (`dockerBuild: {}`).
 ## Applying the bump
 
 1. Increment the package ExVer in `startos/versions/current.ts`. For a
-   packaging-only change, increment the revision after the colon (for example,
-   `1.0.0:3` to `1.0.0:4`).
+   packaging-only change, increment the revision after the colon. This
+   packaging-only release sets the ExVer to `1.0.0:6`.
 2. Put the newest release notes first in the same file.
 3. Run `npm ci`, `npm audit --audit-level=high`, `npm run check`, `npm test`,
    `npm run build`, and the Python test suite.

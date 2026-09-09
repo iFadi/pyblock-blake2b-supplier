@@ -221,10 +221,12 @@ repository's `DEV_KEY` Actions secret when it is available; fork pull requests
 receive no repository secrets and therefore use an ephemeral signing key.
 
 Version tags matching `v<major>.<minor>.<patch>-rev<revision>` publish signed
-`.s9pk` files as assets on a GitHub Release. The release notes include SHA-256
-hashes for every package. No StartOS registry or S3 publication is configured.
-See [CONTRIBUTING.md](CONTRIBUTING.md#maintainer-release-runbook) for the
-maintainer runbook.
+`.s9pk` files as assets on a GitHub Release. The tag must exactly match the
+package ExVer in `startos/versions/current.ts` (`v1.0.0-rev6` maps to
+`1.0.0:6`). The release notes include SHA-256 hashes for every package. No
+StartOS registry or S3 publication is configured. See
+[CONTRIBUTING.md](CONTRIBUTING.md#maintainer-release-runbook) for the maintainer
+runbook.
 
 `DEV_KEY` is signing material. Configure it as a GitHub Actions repository
 secret and never commit it, paste it into workflow files, or expose it in logs.

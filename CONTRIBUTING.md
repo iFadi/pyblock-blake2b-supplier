@@ -62,10 +62,11 @@ does not expose repository secrets to fork pull requests, so those builds use
 an ephemeral signing key and are suitable for verification, not release.
 
 The Release workflow accepts only tags in the form
-`v<major>.<minor>.<patch>-rev<revision>` (for example, `v1.0.0-rev5`). It
-requires the `DEV_KEY` repository secret, attaches the signed `.s9pk` files to
-a GitHub Release, and includes SHA-256 hashes in the release notes. It does not
-publish to a StartOS registry or S3.
+`v<major>.<minor>.<patch>-rev<revision>` (for example, `v1.0.0-rev6`). It
+requires an exact match between the tag and `startos/versions/current.ts`
+(`v1.0.0-rev6` maps to `1.0.0:6`), requires the `DEV_KEY` repository secret,
+attaches the signed `.s9pk` files to a GitHub Release, and includes SHA-256
+hashes in the release notes. It does not publish to a StartOS registry or S3.
 
 ### Maintainer release runbook
 
@@ -79,8 +80,9 @@ publish to a StartOS registry or S3.
    ```sh
    git switch main
    git pull --ff-only origin main
-   RELEASE_TAG=v1.0.0-rev5
+   RELEASE_TAG=v1.0.0-rev6
    printf '%s\n' "$RELEASE_TAG" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+-rev[0-9]+$'
+   grep -F "version: '1.0.0:6'" startos/versions/current.ts
    git ls-remote --exit-code --tags origin "refs/tags/$RELEASE_TAG" && {
      echo "Tag already exists on origin" >&2
      exit 1
