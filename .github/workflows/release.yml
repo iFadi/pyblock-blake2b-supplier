@@ -1,0 +1,42 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+-rev[0-9]+'
+
+permissions: {}
+
+jobs:
+  validate-tag:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Validate release tag
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-rev[0-9]+$ ]]; then
+            echo "::error::Release tag must match v<major>.<minor>.<patch>-rev<revision>"
+            exit 1
+          fi
+
+      - name: Require developer signing key
+        env:
+          DEV_KEY: ${{ secrets.DEV_KEY }}
+        run: |
+          if [[ -z "$DEV_KEY" ]]; then
+            echo "::error::The DEV_KEY repository secret is required for releases"
+            exit 1
+          fi
+
+  release:
+    needs: validate-tag
+    permissions:
+      contents: write
+    uses: Start9Labs/start-technologies/.github/workflows/release.yml@f7dcde71be804af424350b48c8b73aba03f41321
+    with:
+      TAG: ${{ github.ref_name }}
+    secrets:
+      DEV_KEY: ${{ secrets.DEV_KEY }}

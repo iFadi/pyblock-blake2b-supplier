@@ -53,6 +53,50 @@ config validation, RPC client, health state machine, Tor probe, and PyBLOCK
 publisher. Mirror the existing test style (plain `pytest`, no third-party
 fixtures beyond `unittest.mock`).
 
+## Packaging workflows
+
+The Package workflow runs for pull requests, pushes to `main`, and manual
+dispatches. It uploads temporary `.s9pk` GitHub Actions artifacts. Builds from
+trusted branches use the `DEV_KEY` repository secret when configured. GitHub
+does not expose repository secrets to fork pull requests, so those builds use
+an ephemeral signing key and are suitable for verification, not release.
+
+The Release workflow accepts only tags in the form
+`v<major>.<minor>.<patch>-rev<revision>` (for example, `v1.0.0-rev5`). It
+requires the `DEV_KEY` repository secret, attaches the signed `.s9pk` files to
+a GitHub Release, and includes SHA-256 hashes in the release notes. It does not
+publish to a StartOS registry or S3.
+
+### Maintainer release runbook
+
+1. In **Settings → Secrets and variables → Actions**, configure `DEV_KEY` as a
+   repository secret. Never store the key in Git, command history, workflow
+   inputs, issue text, or logs.
+2. Confirm the intended release commit is on `main` and all CI and Package
+   workflow checks have passed.
+3. Update the example tag below, then create and push one annotated tag:
+
+   ```sh
+   git switch main
+   git pull --ff-only origin main
+   RELEASE_TAG=v1.0.0-rev5
+   printf '%s\n' "$RELEASE_TAG" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+-rev[0-9]+$'
+   git ls-remote --exit-code --tags origin "refs/tags/$RELEASE_TAG" && {
+     echo "Tag already exists on origin" >&2
+     exit 1
+   }
+   git tag -a "$RELEASE_TAG" -m "Release $RELEASE_TAG"
+   git push origin "refs/tags/$RELEASE_TAG"
+   ```
+
+4. In GitHub Actions, verify the Release workflow completed successfully.
+   Then inspect the GitHub Release and verify that both architecture `.s9pk`
+   assets and their SHA-256 hashes are present before announcing the release.
+
+Creating the tag is the deployment action: do not reuse or move a published
+release tag. Repository visibility changes remain separate, manual
+administrative actions and are not performed by these workflows.
+
 ## Scope note
 
 This package is an integration layer. It does not implement a Bitcoin node, a

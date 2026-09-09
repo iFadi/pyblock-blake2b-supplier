@@ -212,6 +212,25 @@ make arches     # both architectures
 
 Outputs: `pyblock-blake2b-supplier_x86_64.s9pk` or `_aarch64.s9pk`.
 
+### GitHub package builds
+
+Pull requests, pushes to `main`, and manually dispatched Package workflow runs
+build both `.s9pk` variants with StartOS's official reusable build workflow.
+The outputs are temporary GitHub Actions artifacts. Trusted branches use the
+repository's `DEV_KEY` Actions secret when it is available; fork pull requests
+receive no repository secrets and therefore use an ephemeral signing key.
+
+Version tags matching `v<major>.<minor>.<patch>-rev<revision>` publish signed
+`.s9pk` files as assets on a GitHub Release. The release notes include SHA-256
+hashes for every package. No StartOS registry or S3 publication is configured.
+See [CONTRIBUTING.md](CONTRIBUTING.md#maintainer-release-runbook) for the
+maintainer runbook.
+
+`DEV_KEY` is signing material. Configure it as a GitHub Actions repository
+secret and never commit it, paste it into workflow files, or expose it in logs.
+Changing this repository's visibility is a separate manual administrative
+decision and is not part of the packaging or release workflows.
+
 ---
 
 ## Configuration
