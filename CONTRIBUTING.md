@@ -56,20 +56,26 @@ fixtures beyond `unittest.mock`).
 ## Packaging workflows
 
 The Package workflow runs for pull requests, pushes to `main`, and manual
-dispatches. The official reusable build workflow generates an ephemeral
-signing key for every run and uploads temporary `.s9pk` GitHub Actions
-artifacts. These artifacts are suitable only for verification and testing;
-they are not distributable release artifacts.
+dispatches. Its official reusable build-workflow caller is pinned to a fixed
+upstream commit and receives no `DEV_KEY`; the reusable workflow generates an
+ephemeral signing key and uploads temporary `.s9pk` GitHub Actions artifacts.
+These artifacts are suitable only for verification and testing, not release
+distribution. The upstream workflow transitively invokes mutable helper-action
+references, so this accepted trust boundary is intentionally limited to
+non-secret, non-distributable Package builds.
 
 The Release workflow accepts only tags in the form
 `v<major>.<minor>.<patch>-rev<revision>` (for example, `v1.0.0-rev6`). It
 requires an exact match between the tag and `startos/versions/current.ts`
 (`v1.0.0-rev6` maps to `1.0.0:6`), requires the `DEV_KEY` repository secret,
-attaches the signed `.s9pk` files to a GitHub Release, and includes SHA-256
-hashes in the release notes. Only this tag-triggered workflow uses the
-persistent repository `DEV_KEY`, and its GitHub Release assets are the
-distributable release artifacts. It does not publish to a StartOS registry or
-S3.
+and creates an initial GitHub **prerelease** containing the signed x86_64 and
+aarch64 `.s9pk` files plus `SHA256SUMS`. Its local jobs pin every external
+action by immutable SHA and checksum-verify the exact `start-cli` v2.0.0
+binaries before building or inspecting packages. Only the isolated
+key-provision step receives the persistent repository `DEV_KEY`; the workflow
+removes key material after each matrix build. It verifies package names,
+architectures, version, release notes, and any manifest git hash before using
+`gh` to create the prerelease. It does not publish to a StartOS registry or S3.
 
 ### Maintainer release runbook
 
@@ -95,8 +101,9 @@ S3.
    ```
 
 4. In GitHub Actions, verify the Release workflow completed successfully.
-   Then inspect the GitHub Release and verify that both architecture `.s9pk`
-   assets and their SHA-256 hashes are present before announcing the release.
+   Then inspect the GitHub prerelease and independently verify both architecture
+   `.s9pk` assets against `SHA256SUMS` before deciding whether to promote or
+   announce it. Promotion from prerelease remains a separate maintainer action.
 
 Creating the tag is the deployment action: do not reuse or move a published
 release tag. Repository visibility changes remain separate, manual

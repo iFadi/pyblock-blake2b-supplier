@@ -215,16 +215,22 @@ Outputs: `pyblock-blake2b-supplier_x86_64.s9pk` or `_aarch64.s9pk`.
 ### GitHub package builds
 
 Pull requests, pushes to `main`, and manually dispatched Package workflow runs
-build both `.s9pk` variants with StartOS's official reusable build workflow.
-The reusable workflow generates an ephemeral signing key for every Package
-workflow run. Its temporary GitHub Actions artifacts are intended only for
-verification and testing; they are not distributable release artifacts.
+build both `.s9pk` variants with StartOS's official reusable build workflow at
+a fixed upstream commit. No `DEV_KEY` is passed to that workflow: it generates
+an ephemeral signing key, and its temporary GitHub Actions artifacts are only
+for verification and testing, not distribution. This is a deliberately narrow
+trust boundary. The caller is commit-pinned, but the upstream workflow still
+invokes mutable helper-action references, so ordinary Package builds do not
+have a fully immutable transitive action graph.
 
 Version tags matching `v<major>.<minor>.<patch>-rev<revision>` publish signed
-`.s9pk` files as assets on a GitHub Release. The tag must exactly match the
-package ExVer in `startos/versions/current.ts` (`v1.0.0-rev6` maps to
-`1.0.0:6`). The release notes include SHA-256 hashes for every package. No
-StartOS registry or S3 publication is configured. See
+`.s9pk` files as assets on an initial GitHub **prerelease**. The local Release
+workflow validates the tag against the package ExVer in
+`startos/versions/current.ts` (`v1.0.0-rev6` maps to `1.0.0:6`), builds x86_64
+and aarch64 packages, verifies their manifests, and publishes `SHA256SUMS`
+alongside release notes sourced from the manifest. It uses only immutable
+action SHAs and checksum-verifies the exact StartOS `start-cli` v2.0.0 binaries
+before use. No StartOS registry or S3 publication is configured. See
 [CONTRIBUTING.md](CONTRIBUTING.md#maintainer-release-runbook) for the maintainer
 runbook.
 
