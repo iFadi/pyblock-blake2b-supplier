@@ -9,7 +9,7 @@ on:
       release_tag:
         description: Tag-shaped version to validate for this non-publishing dry run
         required: true
-        default: v1.0.0-rev8
+        default: v1.0.0-rev9
         type: string
 
 permissions: {}
@@ -237,7 +237,7 @@ jobs:
 
       - name: Validate packages and prepare release notes
         env:
-          EXPECTED_VERSION: 1.0.0:8
+          EXPECTED_VERSION: 1.0.0:9
           TAGGED_SHA: ${{ needs.validate-tag.outputs.source-sha }}
         run: |
           set -euo pipefail
@@ -328,7 +328,7 @@ jobs:
           gh release create "$RELEASE_TAG" \
             --verify-tag \
             --prerelease \
-            --title "1.0.0:8" \
+            --title "1.0.0:9" \
             --notes-file release-assets/release-notes.md \
             release-assets/pyblock-blake2b-supplier_aarch64.s9pk \
             release-assets/pyblock-blake2b-supplier_x86_64.s9pk \

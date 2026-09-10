@@ -19,9 +19,13 @@ Response: JSON  {"ok": true}  or  {"reason": "..."}
 import gzip
 import http.client
 import json
+import signal
 import socket
+import threading
+import time
 import urllib.request
 import urllib.error
+from contextlib import contextmanager
 from typing import Any
 
 # Single source of truth for the proxy endpoint lives in supplier.tor, which
@@ -41,6 +45,49 @@ class TorNotReadyError(PublishError):
     """
 
 
+PUBLICATION_DEADLINE_S = 30.0
+
+
+class _PublicationDeadlineExceeded(TimeoutError):
+    """Raised when one publication exceeds its end-to-end deadline."""
+
+
+@contextmanager
+def _publication_deadline(seconds: float):
+    """Enforce one absolute publication deadline on Linux's main thread.
+
+    Socket timeouts restart for each blocking operation, so they cannot bound a
+    response that continually trickles data. The supplier publishes on its main
+    thread in the Linux/Alpine runtime; ITIMER_REAL therefore bounds the full
+    SOCKS connect, request write, response headers, and response body. Any
+    process-level alarm state is restored even when publication fails.
+    """
+    if threading.current_thread() is not threading.main_thread():
+        raise RuntimeError("publication deadline requires the main thread")
+
+    previous_handler = signal.getsignal(signal.SIGALRM)
+    previous_delay, previous_interval = signal.getitimer(signal.ITIMER_REAL)
+    started = time.monotonic()
+
+    def _expire(_signum, _frame):
+        raise _PublicationDeadlineExceeded
+
+    signal.signal(signal.SIGALRM, _expire)
+    signal.setitimer(signal.ITIMER_REAL, seconds)
+    try:
+        yield
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, 0)
+        signal.signal(signal.SIGALRM, previous_handler)
+        if previous_delay > 0:
+            elapsed = time.monotonic() - started
+            signal.setitimer(
+                signal.ITIMER_REAL,
+                max(previous_delay - elapsed, 1e-6),
+                previous_interval,
+            )
+
+
 class _SocksHTTPConnection(http.client.HTTPConnection):
     """HTTPConnection subclass that routes through a SOCKS5h proxy (Tor).
 
@@ -53,11 +100,13 @@ class _SocksHTTPConnection(http.client.HTTPConnection):
         s = socks.socksocket()
         s.set_proxy(socks.SOCKS5, TOR_PROXY_HOST, TOR_PROXY_PORT, rdns=True)
         # AbstractHTTPHandler.do_open() copies opener.open(..., timeout=...)
-        # onto this connection.  A manually-created PySocks socket does not
-        # inherit that value, so apply it before either the proxy handshake or
-        # target connection can block.
-        if self.timeout is not socket._GLOBAL_DEFAULT_TIMEOUT:
-            s.settimeout(self.timeout)
+        # onto this connection. A manually-created PySocks socket does not
+        # preserve all socket timeout modes, so resolve the sentinel exactly as
+        # socket.socket() does and apply numeric/None values explicitly.
+        timeout = self.timeout
+        if timeout is socket._GLOBAL_DEFAULT_TIMEOUT:
+            timeout = socket.getdefaulttimeout()
+        s.settimeout(timeout)
         s.connect((self.host, self.port or 80))
         self.sock = s
 
@@ -140,14 +189,21 @@ class PyblockPublisher:
             opener = urllib.request.build_opener()
 
         try:
-            with opener.open(req, timeout=30) as resp:
-                return json.loads(resp.read())
-        except urllib.error.HTTPError as e:
-            try:
-                body_resp = json.loads(e.read())
-                return body_resp
-            except Exception:
-                raise PublishError(f"HTTP {e.code} from PyBLOCK: {e.reason}")
+            with _publication_deadline(PUBLICATION_DEADLINE_S):
+                try:
+                    with opener.open(req, timeout=PUBLICATION_DEADLINE_S) as resp:
+                        return json.loads(resp.read())
+                except urllib.error.HTTPError as e:
+                    try:
+                        return json.loads(e.read())
+                    except _PublicationDeadlineExceeded:
+                        raise
+                    except Exception:
+                        raise PublishError(f"HTTP {e.code} from PyBLOCK: {e.reason}")
+        except _PublicationDeadlineExceeded as e:
+            raise PublishError(
+                f"Publication exceeded the {PUBLICATION_DEADLINE_S:g}-second deadline"
+            ) from e
         except urllib.error.URLError as e:
             raise PublishError(f"Cannot reach PyBLOCK ({url}): {e.reason}")
         except Exception as e:

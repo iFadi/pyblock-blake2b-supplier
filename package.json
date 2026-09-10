@@ -6,7 +6,7 @@
     "postinstall": "node scripts/patch-bundled-advisories.js",
     "check": "tsc --noEmit",
     "test:ts": "rm -rf ./.test-dist && tsc -p tsconfig.tests.json && node --test .test-dist/tests-ts/*.test.js",
-    "test:release": "node --test .github/scripts/validate-release-tag.test.js",
+    "test:release": "node --test .github/scripts/*.test.js",
     "test": "npm run test:ts && npm run test:release",
     "build": "rm -rf ./javascript && ncc build startos/index.ts -o ./javascript && find ./javascript -type d -exec chmod 0755 {} + && find ./javascript -type f -exec chmod 0644 {} +"
   },

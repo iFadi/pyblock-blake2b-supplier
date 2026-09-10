@@ -16,9 +16,14 @@ from supplier.main import _node_sync_status, run
         {"blocks": 970518, "headers": "970546", "initialblockdownload": False},
         {"blocks": True, "headers": 970546, "initialblockdownload": False},
         {"blocks": 970546, "headers": 970518, "initialblockdownload": False},
+        {"blocks": 970546, "headers": 970546},
+        {"blocks": 970546, "headers": 970546, "initialblockdownload": None},
+        {"blocks": 970546, "headers": 970546, "initialblockdownload": 0},
+        {"blocks": 970546, "headers": 970546, "initialblockdownload": 1},
+        {"blocks": 970546, "headers": 970546, "initialblockdownload": "false"},
     ],
 )
-def test_node_sync_status_fails_closed_for_invalid_header_evidence(chain_info):
+def test_node_sync_status_fails_closed_for_invalid_sync_evidence(chain_info):
     synchronized, _, message = _node_sync_status(chain_info)
 
     assert synchronized is False

@@ -66,6 +66,7 @@ def _node_sync_status(chain_info: dict) -> tuple[bool, int | None, str]:
     """
     blocks = chain_info.get("blocks")
     headers = chain_info.get("headers")
+    initial_block_download = chain_info.get("initialblockdownload")
 
     if not _valid_chain_height(blocks) or not _valid_chain_height(headers):
         return (
@@ -75,7 +76,15 @@ def _node_sync_status(chain_info: dict) -> tuple[bool, int | None, str]:
             f"blocks/headers ({blocks!r}/{headers!r})",
         )
 
-    if chain_info.get("initialblockdownload", False):
+    if type(initial_block_download) is not bool:
+        return (
+            False,
+            blocks,
+            "Node sync status unavailable — getblockchaininfo returned invalid "
+            f"initialblockdownload ({initial_block_download!r})",
+        )
+
+    if initial_block_download:
         progress = chain_info.get("verificationprogress")
         pct = progress * 100 if isinstance(progress, (int, float)) else 0.0
         return False, blocks, f"IBD in progress — {blocks} blocks ({pct:.1f}%)"
@@ -272,9 +281,9 @@ def run() -> None:
         log.info("Publishing template height=%d trigger=%s", height, trigger)
 
         # ── Publish to PyBLOCK ─────────────────────────────────────────────
-        # The request is bounded to 30 seconds. Refresh the out-of-band health
-        # record immediately before entering that blocking boundary so its
-        # 60-second stale guard remains coherent for the full request window.
+        # The complete publication is bounded to 30 seconds. Refresh the
+        # out-of-band health record immediately before entering that blocking
+        # boundary so its 60-second stale guard remains coherent throughout.
         health.touch()
         write_health(health)
         last_write = time.time()
