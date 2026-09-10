@@ -4,6 +4,13 @@ on:
   push:
     tags:
       - 'v*.*.*-rev*'
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Tag-shaped version to validate for this non-publishing dry run
+        required: true
+        default: v1.0.0-rev8
+        type: string
 
 permissions: {}
 
@@ -13,11 +20,13 @@ jobs:
     timeout-minutes: 5
     permissions:
       contents: read
+    outputs:
+      source-sha: ${{ steps.source.outputs.sha }}
     steps:
-      - name: Check out exact tagged source
+      - name: Check out exact source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          ref: ${{ github.ref }}
+          ref: ${{ github.event_name == 'push' && github.ref || github.sha }}
           fetch-depth: 1
           persist-credentials: false
 
@@ -28,15 +37,18 @@ jobs:
           cache: npm
 
       - name: Validate checked-out commit
+        id: source
         env:
-          TAGGED_SHA: ${{ github.sha }}
+          EVENT_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "$TAGGED_SHA"
+          checked_out_sha="$(git rev-parse HEAD)"
+          test "$checked_out_sha" = "$EVENT_SHA"
+          printf 'sha=%s\n' "$checked_out_sha" >> "$GITHUB_OUTPUT"
 
       - name: Validate release tag against package version
         env:
-          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_TAG: ${{ github.event_name == 'push' && github.ref_name || inputs.release_tag }}
         run: node .github/scripts/validate-release-tag.js
 
   build:
@@ -60,10 +72,10 @@ jobs:
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 90
     steps:
-      - name: Check out exact tagged source
+      - name: Check out validated source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          ref: ${{ github.ref }}
+          ref: ${{ needs.validate-tag.outputs.source-sha }}
           fetch-depth: 1
           persist-credentials: false
 
@@ -76,6 +88,8 @@ jobs:
       - name: Install build dependencies
         run: |
           set -euo pipefail
+          grep -rl 'packages\.microsoft\.com' /etc/apt/sources.list.d/ 2>/dev/null \
+            | sudo xargs -r rm -f || true
           sudo apt-get update
           sudo apt-get install --yes --no-install-recommends \
             build-essential \
@@ -83,6 +97,29 @@ jobs:
             libclang-dev \
             qemu-user-static \
             squashfs-tools-ng
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@1f40c72289eff860ee54a304f1438e3cff362e0a # v4
+
+      - name: Set up Docker with containerd image store
+        uses: docker/setup-docker-action@77e84dbf09b47d1e29270283c22f16145aa85ca1 # v5
+        with:
+          daemon-config: |
+            {
+              "features": {
+                "containerd-snapshotter": true
+              }
+            }
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4
+
+      - name: Verify Docker packaging prerequisites
+        run: |
+          set -euo pipefail
+          docker version
+          docker buildx version
+          docker info --format '{{json .DriverStatus}}' | grep -Fq 'io.containerd.snapshotter.v1'
 
       - name: Install verified start-cli v2.0.0
         env:
@@ -103,14 +140,15 @@ jobs:
       - name: Install package dependencies
         run: npm ci
 
-      - name: Provision release signing key
+      - name: Provision persistent release signing key
+        if: ${{ github.event_name == 'push' }}
         env:
           DEV_KEY: ${{ secrets.DEV_KEY }}
         run: |
           set -euo pipefail
           umask 077
           if [[ -z "$DEV_KEY" ]]; then
-            echo "::error::The DEV_KEY repository secret is required for releases"
+            echo "::error::The DEV_KEY repository secret is required for tag releases"
             exit 1
           fi
           mkdir -p "$HOME/.startos" .startos
@@ -118,7 +156,17 @@ jobs:
           cp "$HOME/.startos/id.key.pem" .startos/build.key.pem
           chmod 0600 "$HOME/.startos/id.key.pem" .startos/build.key.pem
 
-      - name: Build signed package
+      - name: Provision ephemeral dry-run signing key
+        if: ${{ github.event_name == 'workflow_dispatch' }}
+        run: |
+          set -euo pipefail
+          umask 077
+          start-cli init-key
+          mkdir -p .startos
+          cp "$HOME/.startos/id.key.pem" .startos/build.key.pem
+          chmod 0600 "$HOME/.startos/id.key.pem" .startos/build.key.pem
+
+      - name: Build package
         env:
           BUILD_TARGET: ${{ matrix.target }}
           EXPECTED_PACKAGE: ${{ matrix.package_name }}
@@ -126,25 +174,21 @@ jobs:
           set -euo pipefail
           RUST_LOG=debug RUST_BACKTRACE=1 make "$BUILD_TARGET"
           mapfile -t packages < <(find . -maxdepth 1 -type f -name '*.s9pk' -printf '%f\n' | sort)
-          if [[ ${#packages[@]} -ne 1 ]]; then
+          if [[ ${#packages[@]} -ne 1 || "${packages[0]:-}" != "$EXPECTED_PACKAGE" ]]; then
             printf '::error::Expected only %s; found: %s\n' "$EXPECTED_PACKAGE" "${packages[*]:-none}"
-            exit 1
-          fi
-          if [[ "${packages[0]}" != "$EXPECTED_PACKAGE" ]]; then
-            printf '::error::Expected only %s; found: %s\n' "$EXPECTED_PACKAGE" "${packages[*]}"
             exit 1
           fi
           test -s "$EXPECTED_PACKAGE"
           sha256sum "$EXPECTED_PACKAGE"
 
-      - name: Remove release signing key
+      - name: Remove signing key
         if: ${{ always() }}
         run: |
           set -euo pipefail
           rm -f "$HOME/.startos/id.key.pem" .startos/build.key.pem
           rmdir "$HOME/.startos" .startos 2>/dev/null || true
 
-      - name: Upload signed package
+      - name: Upload package
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: build-${{ matrix.target }}
@@ -154,16 +198,17 @@ jobs:
           retention-days: 1
 
   release:
-    needs: build
+    if: ${{ github.event_name == 'push' }}
+    needs: [validate-tag, build]
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
       contents: write
     steps:
-      - name: Check out exact tagged source
+      - name: Check out validated tagged source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          ref: ${{ github.ref }}
+          ref: ${{ needs.validate-tag.outputs.source-sha }}
           fetch-depth: 1
           persist-credentials: false
 
@@ -192,8 +237,8 @@ jobs:
 
       - name: Validate packages and prepare release notes
         env:
-          EXPECTED_VERSION: 1.0.0:7
-          TAGGED_SHA: ${{ github.sha }}
+          EXPECTED_VERSION: 1.0.0:8
+          TAGGED_SHA: ${{ needs.validate-tag.outputs.source-sha }}
         run: |
           set -euo pipefail
           cd release-assets
@@ -283,7 +328,7 @@ jobs:
           gh release create "$RELEASE_TAG" \
             --verify-tag \
             --prerelease \
-            --title "1.0.0:7" \
+            --title "1.0.0:8" \
             --notes-file release-assets/release-notes.md \
             release-assets/pyblock-blake2b-supplier_aarch64.s9pk \
             release-assets/pyblock-blake2b-supplier_x86_64.s9pk \

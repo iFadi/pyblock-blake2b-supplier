@@ -65,17 +65,30 @@ references, so this accepted trust boundary is intentionally limited to
 non-secret, non-distributable Package builds.
 
 The Release workflow accepts only tags in the form
-`v<major>.<minor>.<patch>-rev<revision>` (for example, `v1.0.0-rev7`). It
+`v<major>.<minor>.<patch>-rev<revision>` (for example, `v1.0.0-rev8`). It
 requires an exact match between the tag and `startos/versions/current.ts`
-(`v1.0.0-rev7` maps to `1.0.0:7`), requires the `DEV_KEY` repository secret,
+(`v1.0.0-rev8` maps to `1.0.0:8`), requires the `DEV_KEY` repository secret,
 and creates an initial GitHub **prerelease** containing the signed x86_64 and
-aarch64 `.s9pk` files plus `SHA256SUMS`. Its local jobs pin every external
-action by immutable SHA and checksum-verify the exact `start-cli` v2.0.0
-binaries before building or inspecting packages. Only the isolated
-key-provision step receives the persistent repository `DEV_KEY`; the workflow
-removes key material after each matrix build. It verifies package names,
-architectures, version, release notes, and any manifest git hash before using
-`gh` to create the prerelease. It does not publish to a StartOS registry or S3.
+aarch64 `.s9pk` files plus `SHA256SUMS`. Its local jobs reproduce the pinned
+official workflow's QEMU, Docker, Buildx, and containerd image-store setup,
+pin every external action by immutable SHA, and checksum-verify the exact
+`start-cli` v2.0.0 binaries before building or inspecting packages. Only the
+isolated tag-release key-provision step receives the persistent repository
+`DEV_KEY`; the workflow removes key material after each matrix build. It
+verifies package names, architectures, version, release notes, and the manifest
+git hash before using `gh` to create the prerelease. It does not publish to a
+StartOS registry or S3.
+
+A manual Release workflow dispatch is a non-publishing rehearsal. Set its
+`release_tag` input to the tag intended for the checked-out package version. It
+validates the same tag-to-version contract, generates ephemeral keys, runs the
+same two-architecture packaging jobs, and uploads one-day verification
+artifacts. The manual path does not reference `DEV_KEY`, and its release job is
+disabled. Run and review this dry run before creating a release tag.
+
+The immutable `v1.0.0-rev6` and `v1.0.0-rev7` tags are failed pre-release
+attempts. Neither attempt published a GitHub Release or package, and neither tag
+may be moved or reused.
 
 ### Maintainer release runbook
 
@@ -83,15 +96,17 @@ architectures, version, release notes, and any manifest git hash before using
    repository secret. Never store the key in Git, command history, workflow
    inputs, issue text, or logs.
 2. Confirm the intended release commit is on `main` and all CI and Package
-   workflow checks have passed.
+   workflow checks have passed. Manually run the Release workflow with
+   `release_tag=v1.0.0-rev8`; verify both ephemeral dry-run artifacts were
+   produced and confirm that no GitHub Release was created.
 3. Update the example tag below, then create and push one annotated tag:
 
    ```sh
    git switch main
    git pull --ff-only origin main
-   RELEASE_TAG=v1.0.0-rev7
+   RELEASE_TAG=v1.0.0-rev8
    printf '%s\n' "$RELEASE_TAG" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+-rev[0-9]+$'
-   grep -F "version: '1.0.0:7'" startos/versions/current.ts
+   grep -F "version: '1.0.0:8'" startos/versions/current.ts
    git ls-remote --exit-code --tags origin "refs/tags/$RELEASE_TAG" && {
      echo "Tag already exists on origin" >&2
      exit 1

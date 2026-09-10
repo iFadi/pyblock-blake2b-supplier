@@ -226,20 +226,30 @@ have a fully immutable transitive action graph.
 Version tags matching `v<major>.<minor>.<patch>-rev<revision>` publish signed
 `.s9pk` files as assets on an initial GitHub **prerelease**. The local Release
 workflow validates the tag against the package ExVer in
-`startos/versions/current.ts` (`v1.0.0-rev7` maps to `1.0.0:7`), builds x86_64
+`startos/versions/current.ts` (`v1.0.0-rev8` maps to `1.0.0:8`), builds x86_64
 and aarch64 packages, verifies their manifests, and publishes `SHA256SUMS`
-alongside release notes sourced from the manifest. It uses only immutable
-action SHAs and checksum-verifies the exact StartOS `start-cli` v2.0.0 binaries
-before use. No StartOS registry or S3 publication is configured. See
+alongside release notes sourced from the manifest. It reproduces the pinned
+official Start9 workflow's QEMU, Docker, Buildx, and containerd image-store
+prerequisites, uses only immutable action SHAs, and checksum-verifies the exact
+StartOS `start-cli` v2.0.0 binaries before use. No StartOS registry or S3
+publication is configured. See
 [CONTRIBUTING.md](CONTRIBUTING.md#maintainer-release-runbook) for the maintainer
 runbook.
 
-Only the tag-triggered Release workflow uses the persistent repository
-`DEV_KEY`; its signed GitHub Release assets are the distributable release
-artifacts. Configure `DEV_KEY` as a GitHub Actions repository secret and never
-commit it, paste it into workflow files, or expose it in logs. Changing this
-repository's visibility is a separate manual administrative decision and is
-not part of the packaging or release workflows.
+The Release workflow can also be manually dispatched as a non-publishing dry
+run. That path validates a tag-shaped input against the checked-out manifest,
+generates a fresh ephemeral key per architecture, executes the same packaging
+steps, and uploads one-day verification artifacts. It cannot receive `DEV_KEY`
+and the release job is disabled for manual dispatches.
+
+Only the tag-triggered Release workflow's isolated key-provisioning step uses
+the persistent repository `DEV_KEY`; its signed GitHub Release assets are the
+distributable release artifacts. Configure `DEV_KEY` as a GitHub Actions
+repository secret and never commit it, paste it into workflow files, or expose
+it in logs. The immutable `v1.0.0-rev6` and `v1.0.0-rev7` tags remain honest
+records of failed pre-release attempts; neither published a GitHub Release or
+package. Changing this repository's visibility is a separate manual
+administrative decision and is not part of the packaging or release workflows.
 
 ---
 
