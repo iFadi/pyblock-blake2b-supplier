@@ -9,6 +9,28 @@ Packaged for StartOS 0.4 using the TypeScript Package API.
 
 ---
 
+## Download / Installation
+
+Download the latest stable StartOS package from GitHub:
+
+- [x86_64 `.s9pk`](https://github.com/iFadi/pyblock-blake2b-supplier/releases/latest/download/pyblock-blake2b-supplier_x86_64.s9pk)
+- [aarch64 `.s9pk`](https://github.com/iFadi/pyblock-blake2b-supplier/releases/latest/download/pyblock-blake2b-supplier_aarch64.s9pk)
+- [SHA256 checksums](https://github.com/iFadi/pyblock-blake2b-supplier/releases/latest/download/SHA256SUMS)
+- [Latest stable release page](https://github.com/iFadi/pyblock-blake2b-supplier/releases/latest)
+
+Most current Start9/StartOS x86 machines use **x86_64**. Verify your server's
+architecture before sideloading, then install the downloaded `.s9pk` through
+your StartOS side-loading workflow.
+
+After installation, StartOS creates a critical **Configure PyBLOCK BLAKE2b
+Supplier** task. Open that task and fill in your payout address, RPC
+credentials, and transport preference before starting the service.
+
+See [`instructions.md`](instructions.md) for the full first-run walkthrough
+and health-state reference.
+
+---
+
 ## Overview
 
 This package connects to the local `bitcoind` dependency on your StartOS
@@ -47,21 +69,6 @@ unavailable.
 - `datacarrier=0` in your node's `bitcoin.conf` (PyBLOCK rejects templates
   containing OP_RETURN outputs)
 - A BLAKE2b-chain payout address and dedicated RPC credentials for this supplier
-
----
-
-## Installation
-
-Build or obtain the `.s9pk` package and install it through your StartOS
-side-loading workflow. The package is not currently distributed through the
-StartOS marketplace.
-
-After installation, StartOS creates a critical **Configure PyBLOCK BLAKE2b
-Supplier** task. Open that task and fill in your payout address, RPC
-credentials, and transport preference before starting the service.
-
-See [`instructions.md`](instructions.md) for the full first-run walkthrough
-and health-state reference.
 
 ---
 
