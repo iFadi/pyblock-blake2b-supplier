@@ -59,7 +59,7 @@ recorded by the supplier loop:
 | Result | Meaning |
 |---|---|
 | **Success** | `healthy_active` — PyBLOCK accepted your most recent template. |
-| **Loading** | `node_unsynced` — your node is still in initial block download. |
+| **Loading** | `node_unsynced` — the node is in initial block download, its block tip trails its known headers, or synchronization data is invalid. Publication remains paused until synchronized. |
 | **Starting** | The supplier has started but has not yet reached its first template. |
 | **Failure** | Any other state — see below. |
 
@@ -88,7 +88,7 @@ supplier process that wrote it is still alive:
   names the specific SOCKS failure. Clearnet is never substituted.
 - `pyblock_rejected`: PyBLOCK rejected your template. The most common cause is OP_RETURN
   transactions in the template — set `datacarrier=0` and restart the node.
-- `node_unsynced`: Node is still syncing the blockchain. Wait for IBD to complete.
+- `node_unsynced`: Node synchronization is incomplete or cannot be verified. Wait for the block and header tips to match and for IBD to complete.
 
 ## Payout Terms
 

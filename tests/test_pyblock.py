@@ -150,7 +150,7 @@ class TestSocksHandler:
         mock_socks.SOCKS5 = 2
         mock_socks.socksocket.return_value = mock_sock
 
-        conn = _SocksHTTPConnection("oniontest.onion")
+        conn = _SocksHTTPConnection("oniontest.onion", timeout=30)
         with patch.dict(sys.modules, {"socks": mock_socks}):
             conn.connect()
 
@@ -158,6 +158,7 @@ class TestSocksHandler:
         mock_sock.set_proxy.assert_called_once_with(
             2, TOR_PROXY_HOST, TOR_PROXY_PORT, rdns=True
         )
+        mock_sock.settimeout.assert_called_once_with(30)
         mock_sock.connect.assert_called_once_with(("oniontest.onion", 80))
         assert conn.sock is mock_sock
 

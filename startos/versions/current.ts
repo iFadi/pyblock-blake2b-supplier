@@ -1,8 +1,11 @@
 import { VersionInfo } from '@start9labs/start-sdk'
 
 export const current = VersionInfo.of({
-  version: '1.0.0:8',
+  version: '1.0.0:9',
   releaseNotes: [
+    'Bound Tor-routed HTTP publication to the configured 30-second request timeout.',
+    'Refuse to publish while the Bitcoin node block tip trails its known header tip, even when initial block download is false.',
+    'Fail closed when node header synchronization data is missing or malformed, and resume automatically after synchronization.',
     'Restore the Docker, Buildx, QEMU, and containerd prerequisites omitted from the failed rev7 pre-release attempt.',
     'Add an ephemeral-key GitHub Actions dry run that exercises both release architectures without publishing.',
     'Keep rev6 and rev7 as immutable failed pre-release attempts; neither produced a GitHub Release.',

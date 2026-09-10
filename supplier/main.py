@@ -51,6 +51,53 @@ HEARTBEAT_INTERVAL_S = 15
 RETRY_INTERVAL_S = 10
 
 
+def _valid_chain_height(value: object) -> bool:
+    """Return whether an RPC value is a usable non-negative block height."""
+    return isinstance(value, int) and not isinstance(value, bool) and value >= 0
+
+
+def _node_sync_status(chain_info: dict) -> tuple[bool, int | None, str]:
+    """Evaluate synchronization using the node's current blocks and headers.
+
+    This is deliberately stateless.  Comparing only values from the current
+    RPC response prevents stale publication while preserving legitimate reorgs
+    that move both the block and header tips to a lower synchronized height.
+    Missing or malformed evidence fails closed.
+    """
+    blocks = chain_info.get("blocks")
+    headers = chain_info.get("headers")
+
+    if not _valid_chain_height(blocks) or not _valid_chain_height(headers):
+        return (
+            False,
+            None,
+            "Node sync status unavailable — getblockchaininfo returned invalid "
+            f"blocks/headers ({blocks!r}/{headers!r})",
+        )
+
+    if chain_info.get("initialblockdownload", False):
+        progress = chain_info.get("verificationprogress")
+        pct = progress * 100 if isinstance(progress, (int, float)) else 0.0
+        return False, blocks, f"IBD in progress — {blocks} blocks ({pct:.1f}%)"
+
+    if blocks < headers:
+        return (
+            False,
+            blocks,
+            f"Node catching up — block tip {blocks}, header tip {headers} "
+            f"({headers - blocks} blocks behind)",
+        )
+
+    if blocks > headers:
+        return (
+            False,
+            blocks,
+            f"Node sync status inconsistent — block tip {blocks} exceeds header tip {headers}",
+        )
+
+    return True, blocks, ""
+
+
 def _heartbeat(health: HealthState, last_write: float) -> float:
     """Rewrite the current state if it is getting close to being stale."""
     now = time.time()
@@ -181,9 +228,9 @@ def run() -> None:
             time.sleep(POLL_INTERVAL_S)
             continue
 
-        if chain_info.get("initialblockdownload", False):
-            pct = chain_info.get("verificationprogress", 0) * 100
-            msg = f"IBD in progress — {chain_info['blocks']} blocks ({pct:.1f}%)"
+        synchronized, height, sync_message = _node_sync_status(chain_info)
+        if not synchronized:
+            msg = sync_message
             log.info(msg)
             health.set("node_unsynced", msg)
             write_health(health)
@@ -191,7 +238,7 @@ def run() -> None:
             time.sleep(POLL_INTERVAL_S)
             continue
 
-        height = chain_info["blocks"]
+        assert height is not None  # guaranteed by _node_sync_status
         now = time.time()
         elapsed = now - last_sent
 
@@ -225,6 +272,12 @@ def run() -> None:
         log.info("Publishing template height=%d trigger=%s", height, trigger)
 
         # ── Publish to PyBLOCK ─────────────────────────────────────────────
+        # The request is bounded to 30 seconds. Refresh the out-of-band health
+        # record immediately before entering that blocking boundary so its
+        # 60-second stale guard remains coherent for the full request window.
+        health.touch()
+        write_health(health)
+        last_write = time.time()
         try:
             result = publisher.publish(gbt)
         except TorNotReadyError as e:

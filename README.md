@@ -50,7 +50,7 @@ unavailable.
 
 ## Features
 
-- Polls block height every 2 s; publishes on height change or ≥20 s interval
+- Polls block and header heights every 2 s; publishes only from a synchronized tip
 - GBT rules: `segwit` + `blake2b` (required for BLAKE2b Carousel eligibility)
 - Tor-first transport: routes to PyBLOCK's `.onion` via an in-container Tor daemon
 - Clearnet fallback available as explicit opt-in
@@ -129,7 +129,7 @@ StartOS device
 | State | StartOS result | Meaning |
 |---|---|---|
 | `healthy_active` | Success | PyBLOCK accepted your most recent template |
-| `node_unsynced` | Loading | Node is in initial block download |
+| `node_unsynced` | Loading | Node is in initial block download, behind its known headers, or returned invalid synchronization data |
 | `starting` | Starting | Supplier has started; first publish not yet sent |
 | `node_unavailable` | Failure | RPC unreachable or credentials rejected |
 | `gbt_unsupported` | Failure | Node rejected the `blake2b` GBT rule |
@@ -221,42 +221,13 @@ Outputs: `pyblock-blake2b-supplier_x86_64.s9pk` or `_aarch64.s9pk`.
 
 ### GitHub package builds
 
-Pull requests, pushes to `main`, and manually dispatched Package workflow runs
-build both `.s9pk` variants with StartOS's official reusable build workflow at
-a fixed upstream commit. No `DEV_KEY` is passed to that workflow: it generates
-an ephemeral signing key, and its temporary GitHub Actions artifacts are only
-for verification and testing, not distribution. This is a deliberately narrow
-trust boundary. The caller is commit-pinned, but the upstream workflow still
-invokes mutable helper-action references, so ordinary Package builds do not
-have a fully immutable transitive action graph.
+CI builds x86_64 and aarch64 `.s9pk` packages for verification. Temporary
+GitHub Actions workflow artifacts are test-only and are not distributable
+releases.
 
-Version tags matching `v<major>.<minor>.<patch>-rev<revision>` publish signed
-`.s9pk` files as assets on an initial GitHub **prerelease**. The local Release
-workflow validates the tag against the package ExVer in
-`startos/versions/current.ts` (`v1.0.0-rev8` maps to `1.0.0:8`), builds x86_64
-and aarch64 packages, verifies their manifests, and publishes `SHA256SUMS`
-alongside release notes sourced from the manifest. It reproduces the pinned
-official Start9 workflow's QEMU, Docker, Buildx, and containerd image-store
-prerequisites, uses only immutable action SHAs, and checksum-verifies the exact
-StartOS `start-cli` v2.0.0 binaries before use. No StartOS registry or S3
-publication is configured. See
-[CONTRIBUTING.md](CONTRIBUTING.md#maintainer-release-runbook) for the maintainer
-runbook.
-
-The Release workflow can also be manually dispatched as a non-publishing dry
-run. That path validates a tag-shaped input against the checked-out manifest,
-generates a fresh ephemeral key per architecture, executes the same packaging
-steps, and uploads one-day verification artifacts. It cannot receive `DEV_KEY`
-and the release job is disabled for manual dispatches.
-
-Only the tag-triggered Release workflow's isolated key-provisioning step uses
-the persistent repository `DEV_KEY`; its signed GitHub Release assets are the
-distributable release artifacts. Configure `DEV_KEY` as a GitHub Actions
-repository secret and never commit it, paste it into workflow files, or expose
-it in logs. The immutable `v1.0.0-rev6` and `v1.0.0-rev7` tags remain honest
-records of failed pre-release attempts; neither published a GitHub Release or
-package. Changing this repository's visibility is a separate manual
-administrative decision and is not part of the packaging or release workflows.
+Official distributable packages are signed `.s9pk` GitHub Release assets
+published with `SHA256SUMS`. See the
+[maintainer release and signing details](CONTRIBUTING.md#maintainer-release-runbook).
 
 ---
 

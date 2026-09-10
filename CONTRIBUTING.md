@@ -65,9 +65,9 @@ references, so this accepted trust boundary is intentionally limited to
 non-secret, non-distributable Package builds.
 
 The Release workflow accepts only tags in the form
-`v<major>.<minor>.<patch>-rev<revision>` (for example, `v1.0.0-rev8`). It
+`v<major>.<minor>.<patch>-rev<revision>` (for example, `v1.0.0-rev9`). It
 requires an exact match between the tag and `startos/versions/current.ts`
-(`v1.0.0-rev8` maps to `1.0.0:8`), requires the `DEV_KEY` repository secret,
+(`v1.0.0-rev9` maps to `1.0.0:9`), requires the `DEV_KEY` repository secret,
 and creates an initial GitHub **prerelease** containing the signed x86_64 and
 aarch64 `.s9pk` files plus `SHA256SUMS`. Its local jobs reproduce the pinned
 official workflow's QEMU, Docker, Buildx, and containerd image-store setup,
@@ -97,16 +97,16 @@ may be moved or reused.
    inputs, issue text, or logs.
 2. Confirm the intended release commit is on `main` and all CI and Package
    workflow checks have passed. Manually run the Release workflow with
-   `release_tag=v1.0.0-rev8`; verify both ephemeral dry-run artifacts were
+   `release_tag=v1.0.0-rev9`; verify both ephemeral dry-run artifacts were
    produced and confirm that no GitHub Release was created.
 3. Update the example tag below, then create and push one annotated tag:
 
    ```sh
    git switch main
    git pull --ff-only origin main
-   RELEASE_TAG=v1.0.0-rev8
+   RELEASE_TAG=v1.0.0-rev9
    printf '%s\n' "$RELEASE_TAG" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+-rev[0-9]+$'
-   grep -F "version: '1.0.0:8'" startos/versions/current.ts
+   grep -F "version: '1.0.0:9'" startos/versions/current.ts
    git ls-remote --exit-code --tags origin "refs/tags/$RELEASE_TAG" && {
      echo "Tag already exists on origin" >&2
      exit 1

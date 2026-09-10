@@ -19,6 +19,7 @@ Response: JSON  {"ok": true}  or  {"reason": "..."}
 import gzip
 import http.client
 import json
+import socket
 import urllib.request
 import urllib.error
 from typing import Any
@@ -51,6 +52,12 @@ class _SocksHTTPConnection(http.client.HTTPConnection):
         import socks  # PySocks — installed in Docker image; verified in _tor_opener
         s = socks.socksocket()
         s.set_proxy(socks.SOCKS5, TOR_PROXY_HOST, TOR_PROXY_PORT, rdns=True)
+        # AbstractHTTPHandler.do_open() copies opener.open(..., timeout=...)
+        # onto this connection.  A manually-created PySocks socket does not
+        # inherit that value, so apply it before either the proxy handshake or
+        # target connection can block.
+        if self.timeout is not socket._GLOBAL_DEFAULT_TIMEOUT:
+            s.settimeout(self.timeout)
         s.connect((self.host, self.port or 80))
         self.sock = s
 
