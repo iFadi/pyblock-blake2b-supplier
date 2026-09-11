@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.0.0-rev12] — 2026-09-11
+
+### Added
+- **Supplier Dashboard action:** displays the operator's personal PyBLOCK dashboard URL directly in the StartOS app UI. The URL (`https://b.pyblock.xyz:8443/supplier.php?sid=<sid>`) is computed from the first 16 hex characters of `sha256(payout_address)` — no manual calculation needed. Shows a clear placeholder when the app has not been configured yet.
+
 ## [1.0.0-rev11] — 2026-09-11
 
 ### Added

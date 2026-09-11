@@ -43,6 +43,9 @@ const keys = [
   'Configure the BLAKE2b payout address and dedicated Bitcoin Knots RPC credentials before starting the supplier.',
   'The rpcpassword configured on your Bitcoin Knots BLAKE2b node. It is never displayed. Leave blank to keep the stored password, or enter a value to set or replace it.',
   'RPC Password is required the first time configuration is saved.',
+  'Supplier Dashboard',
+  'Open your personal supplier dashboard on the PyBLOCK network. The URL is derived from your payout address — no manual SHA256 calculation needed.',
+  'Not configured — save a payout address first.',
 ] as const
 
 type Key = (typeof keys)[number]
