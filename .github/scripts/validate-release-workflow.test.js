@@ -23,7 +23,7 @@ function exactly(source, pattern, expected, description) {
 test('all release version surfaces match the authoritative StartOS version', () => {
   const versionSource = readFileSync('startos/versions/current.ts', 'utf8')
   const versions = matches(versionSource, /^\s*version:\s*'([^']+)'\s*,\s*$/gm)
-  assert.deepEqual(versions, ['1.0.0:10'])
+  assert.deepEqual(versions, ['1.0.0:11'])
   const versionMatch = versions[0].match(/^([0-9]+\.[0-9]+\.[0-9]+):([0-9]+)$/)
   assert.ok(versionMatch)
   const expectedTag = `v${versionMatch[1]}-rev${versionMatch[2]}`
@@ -99,7 +99,7 @@ test('staging is source-pinned, secret-isolated, two-architecture, and non-publi
   assert.match(stage, /test ! -e "\$HOME\/\.startos\/id\.key\.pem"/)
   exactly(stage, /^\s{12}architecture:\s*(x86_64|aarch64)\s*$/gm,
     ['x86_64', 'aarch64'], 'stage architecture matrix must be exact')
-  assert.match(stage, /EXPECTED_VERSION: 1\.0\.0:10/)
+  assert.match(stage, /EXPECTED_VERSION: 1\.0\.0:11/)
   assert.match(stage, /\.gitHash \/\/ empty/)
   assert.match(stage, /runtimeApkClosureSha256/)
   assert.match(stage, /pythonRuntimeRequirementsSha256/)

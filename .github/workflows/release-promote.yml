@@ -14,7 +14,7 @@ on:
       release_tag:
         description: Protected signed annotated tag at the exact source SHA
         required: true
-        default: v1.0.0-rev10
+        default: v1.0.0-rev11
         type: string
 
 permissions: {}
@@ -140,7 +140,7 @@ jobs:
 
       - name: Verify exact bytes, metadata, and source identity
         env:
-          EXPECTED_VERSION: 1.0.0:10
+          EXPECTED_VERSION: 1.0.0:11
           RELEASE_TAG: ${{ inputs.release_tag }}
           SOURCE_SHA: ${{ needs.validate-request.outputs.source-sha }}
           STAGING_RUN_ID: ${{ inputs.staging_run_id }}
@@ -234,7 +234,7 @@ jobs:
           gh release create "$RELEASE_TAG" \
             --verify-tag \
             --prerelease \
-            --title "1.0.0:10" \
+            --title "1.0.0:11" \
             --notes-file release-assets/release-notes.md \
             release-assets/pyblock-blake2b-supplier_aarch64.s9pk \
             release-assets/pyblock-blake2b-supplier_x86_64.s9pk \

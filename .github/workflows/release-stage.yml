@@ -6,7 +6,7 @@ on:
       release_tag:
         description: Exact tag that will identify this candidate after approval
         required: true
-        default: v1.0.0-rev10
+        default: v1.0.0-rev11
         type: string
       source_sha:
         description: Full 40-character source commit SHA selected for this run
@@ -293,7 +293,7 @@ jobs:
 
       - name: Validate and describe exact staged bytes
         env:
-          EXPECTED_VERSION: 1.0.0:10
+          EXPECTED_VERSION: 1.0.0:11
           RELEASE_TAG: ${{ inputs.release_tag }}
           SOURCE_SHA: ${{ needs.validate-source.outputs.source-sha }}
         run: |
@@ -347,7 +347,7 @@ jobs:
               "$inventory" >/dev/null
             diff -u \
               <(jq -Rsc 'split("\n") | map(select(length > 0))' ../docker/runtime-apk.lock) \
-              <(jq '.runtimeApks' "$inventory")
+              <(jq -c '.runtimeApks' "$inventory")
 
             notes="$(jq --exit-status --raw-output '.releaseNotes | if type == "object" then (.en_US // first(.[]) // "") else . end' <<<"$manifest")"
             test -n "$notes"

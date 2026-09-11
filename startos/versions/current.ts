@@ -1,7 +1,7 @@
 import { VersionInfo } from '@start9labs/start-sdk'
 
 export const current = VersionInfo.of({
-  version: '1.0.0:10',
+  version: '1.0.0:11',
   releaseNotes: [
     'Pin the multi-architecture Python base image, the complete added Alpine package set, and all Python dependencies to immutable versions and hashes.',
     'Keep Tor at the StartOS-tested 0.4.9.11-r0 build and fail closed if any locked dependency artifact changes or becomes unavailable.',
