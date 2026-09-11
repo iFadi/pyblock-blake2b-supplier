@@ -15,9 +15,14 @@ A BLAKE2b-capable Bitcoin node (`bitcoind` ≥ 29.4.1) must be installed and run
 server. It is a **required** dependency: this service reads `getblocktemplate` from the local
 node only, and there is no option to point it at a remote node.
 
-Your node **must** have `datacarrier=0` in its `bitcoin.conf`. If your node accepts
-OP_RETURN transactions, PyBLOCK rejects every template it receives from you. Restart the node
-after making this change.
+Two settings are **required** in your `bitcoin.conf`:
+
+| Setting | Value | Why |
+|---|---|---|
+| `datacarrier` | `0` | Templates containing OP_RETURN data fail PyBLOCK's `spam` gate and are rejected outright. |
+| `blockreservedweight` | `100000` | PyBLOCK's DATUM pool pays every identity inside the coinbase — on a large window that is hundreds of outputs (≈124 WU each). The node must reserve weight for them so the coinbase never displaces transactions. |
+
+Restart the node after adding or changing these settings.
 
 ## First-run configuration
 
@@ -89,6 +94,30 @@ supplier process that wrote it is still alive:
 - `pyblock_rejected`: PyBLOCK rejected your template. The most common cause is OP_RETURN
   transactions in the template — set `datacarrier=0` and restart the node.
 - `node_unsynced`: Node synchronization is incomplete or cannot be verified. Wait for the block and header tips to match and for IBD to complete.
+
+## PyBLOCK Ingest Responses
+
+Every template `POST` returns a JSON body. The supplier maps these to the health states above.
+
+| HTTP | Body | Meaning |
+|---|---|---|
+| `200` | `{"ok": true, "gate": "passed"}` | Accepted — template built on the current tip. |
+| `200` | `{"ok": true, "gate": "dedup"}` | Accepted — identical content already validated; this is normal and not an error. |
+| `200` | `{"ok": false, "gate": "spam", "reason": "…"}` | Rejected — `datacarrier=0` is missing from your node's `bitcoin.conf`. Add it and restart the node. |
+| `200` | `{"ok": false, "gate": "knots", "reason": "…"}` | Rejected — wrong node version. PyBLOCK requires Bitcoin Knots ≥ 29.4.1 / `knots20260508` on the BLAKE2b fork. |
+| `200` | `{"ok": false, "gate": "unverified"}` | Rejected — `getblocktemplate mode=proposal` failed on the pool node; the template was not valid against the current tip. |
+| `429` | `{"ok": false, "reason": "rate limited — max 30 posts/min per IP"}` | Rate limited. The supplier publishes at most ~3 posts/min (height change or 20-second interval), well under the limit; this should never appear in normal operation. |
+
+## Supplier Dashboard
+
+Every supplier has a public status page at:
+
+```
+https://b.pyblock.xyz:8443/supplier.php?sid=<first 16 characters of sha256(payout_address)>
+```
+
+This page shows your live/fresh/paused status and the number of templates declared. It is the
+canonical way to confirm that PyBLOCK is receiving your templates without leaving StartOS.
 
 ## Payout Terms
 
