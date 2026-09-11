@@ -201,6 +201,11 @@ python3 -m pytest tests/ -v
 
 Dependencies: `pyyaml`, `PySocks`, `pytest`.
 
+Container and Python dependencies are version- and hash-locked for both
+supported architectures. See
+[dependency lock maintenance](CONTRIBUTING.md#dependency-lock-maintenance) for
+the maintained reproducibility boundary and update procedure.
+
 ### Bundle TypeScript (no .s9pk output)
 
 ```sh

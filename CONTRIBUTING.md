@@ -25,7 +25,8 @@ public issue.
    npm run check
    npm test
 
-   # Python unit tests (requires pyyaml, PySocks, pytest)
+   # Python unit tests (install the hash-locked test dependencies first)
+   python3 -m pip install --require-hashes -r requirements-test.txt
    python3 -m pytest tests/ -v
 
    # Full test suite via Docker
@@ -65,9 +66,9 @@ references, so this accepted trust boundary is intentionally limited to
 non-secret, non-distributable Package builds.
 
 The Release workflow accepts only tags in the form
-`v<major>.<minor>.<patch>-rev<revision>` (for example, `v1.0.0-rev9`). It
+`v<major>.<minor>.<patch>-rev<revision>` (for example, `v1.0.0-rev10`). It
 requires an exact match between the tag and `startos/versions/current.ts`
-(`v1.0.0-rev9` maps to `1.0.0:9`), requires the `DEV_KEY` repository secret,
+(`v1.0.0-rev10` maps to `1.0.0:10`), requires the `DEV_KEY` repository secret,
 and creates an initial GitHub **prerelease** containing the signed x86_64 and
 aarch64 `.s9pk` files plus `SHA256SUMS`. Its local jobs reproduce the pinned
 official workflow's QEMU, Docker, Buildx, and containerd image-store setup,
@@ -86,6 +87,44 @@ same two-architecture packaging jobs, and uploads one-day verification
 artifacts. The manual path does not reference `DEV_KEY`, and its release job is
 disabled. Run and review this dry run before creating a release tag.
 
+## Dependency lock maintenance
+
+The Docker build has three reproducibility boundaries:
+
+- `docker/base-images.lock.json` records the immutable OCI index digest and the
+  linux/amd64 and linux/arm64 child manifests. Both Dockerfile stages use the
+  index digest, so BuildKit selects the locked child for the target platform.
+- `docker/runtime-apk.lock` pins every Alpine package added above the base
+  image. The base image digest fixes all packages already present in that
+  image. Tor 0.4.9.11-r0 is downloaded as the exact architecture-specific,
+  Alpine-signed APK and checked against `docker/tor-apk-sha256.lock` because
+  Alpine's mutable package index no longer selects that tested version.
+- `requirements-runtime.txt` and `requirements-test.txt` pin every Python
+  package and require SHA-256 verification. PyYAML contains separate accepted
+  wheel hashes for x86_64 and aarch64; pure-Python wheels share one hash.
+
+All three boundaries fail closed: a missing version, changed artifact, unknown
+architecture, omitted hash, or changed image digest stops the build or the
+regression suite. The remaining inputs are the checked-out source tree,
+BuildKit/start-cli implementation, and host kernel/emulation. The `.s9pk`
+signature is intentionally not byte-for-byte reproducible because signing can
+introduce build-specific material; validate the embedded manifest, source
+identity, image contents, and checksums for each exact candidate instead.
+
+To update a lock:
+
+1. Resolve and review artifacts independently for linux/amd64 and linux/arm64.
+   Record OCI child digests and SHA-256 values from authoritative registries or
+   downloaded artifacts; do not infer one architecture from the other.
+2. Update the smallest applicable lock and the Dockerfile index digest. Keep
+   exact `name=version-rN` APK entries for the complete added package closure.
+3. Run `npm test`, then build both Docker targets with cache disabled. Inside
+   each runtime image, record `apk info -v` and `python -m pip list --format=freeze`.
+4. Build and inspect each `.s9pk` architecture. Record its SHA-256, manifest
+   version, architecture, git hash, and dependency inventory before any tag or
+   publication decision. Evidence for one architecture is not proof for the
+   other.
+
 The immutable `v1.0.0-rev6` and `v1.0.0-rev7` tags are failed pre-release
 attempts. Neither attempt published a GitHub Release or package, and neither tag
 may be moved or reused.
@@ -97,16 +136,16 @@ may be moved or reused.
    inputs, issue text, or logs.
 2. Confirm the intended release commit is on `main` and all CI and Package
    workflow checks have passed. Manually run the Release workflow with
-   `release_tag=v1.0.0-rev9`; verify both ephemeral dry-run artifacts were
+   `release_tag=v1.0.0-rev10`; verify both ephemeral dry-run artifacts were
    produced and confirm that no GitHub Release was created.
 3. Update the example tag below, then create and push one annotated tag:
 
    ```sh
    git switch main
    git pull --ff-only origin main
-   RELEASE_TAG=v1.0.0-rev9
+   RELEASE_TAG=v1.0.0-rev10
    printf '%s\n' "$RELEASE_TAG" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+-rev[0-9]+$'
-   grep -F "version: '1.0.0:9'" startos/versions/current.ts
+   grep -F "version: '1.0.0:10'" startos/versions/current.ts
    git ls-remote --exit-code --tags origin "refs/tags/$RELEASE_TAG" && {
      echo "Tag already exists on origin" >&2
      exit 1

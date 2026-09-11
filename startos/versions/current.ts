@@ -1,8 +1,10 @@
 import { VersionInfo } from '@start9labs/start-sdk'
 
 export const current = VersionInfo.of({
-  version: '1.0.0:9',
+  version: '1.0.0:10',
   releaseNotes: [
+    'Pin the multi-architecture Python base image, the complete added Alpine package set, and all Python dependencies to immutable versions and hashes.',
+    'Keep Tor at the StartOS-tested 0.4.9.11-r0 build and fail closed if any locked dependency artifact changes or becomes unavailable.',
     'Bound each Tor-routed HTTP publication to a 30-second end-to-end deadline.',
     'Refuse to publish while the Bitcoin node block tip trails its known header tip, even when initial block download is false.',
     'Fail closed when node block, header, or initial-block-download synchronization data is missing or malformed, and resume automatically after synchronization.',

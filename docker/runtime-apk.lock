@@ -1,0 +1,9 @@
+libbsd=0.12.2-r0
+libcap2=2.78-r0
+libevent=2.1.13-r0
+libmd=1.2.0-r0
+libseccomp=2.6.0-r2
+netcat-openbsd=1.234.1-r0
+su-exec=0.3-r0
+tor=0.4.9.11-r0
+zstd-libs=1.5.7-r2

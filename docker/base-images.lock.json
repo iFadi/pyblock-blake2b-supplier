@@ -1,0 +1,8 @@
+{
+  "image": "python:3.12-alpine",
+  "indexDigest": "sha256:b64631e04e4920160c50fbe8d8df828f7f35f06f425cb44aa09bca53e708a35a",
+  "platforms": {
+    "linux/amd64": "sha256:78e98729f8fc4099e53cffb3fe59fd15b18dfa4ace8c914dee0cefa5320068eb",
+    "linux/arm64/v8": "sha256:6c251882dcd56a1b1f20e174a09465f68a6b85c1d066becd954889099177ec34"
+  }
+}
