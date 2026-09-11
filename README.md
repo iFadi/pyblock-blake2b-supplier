@@ -94,6 +94,7 @@ StartOS device
         ├── backups.ts            — volume backup/restore
         ├── dependencies.ts       — bitcoind dependency declaration
         ├── actions/config.ts     — Configure action (payout address, RPC, transport)
+        ├── actions/dashboard-url.ts — Supplier Dashboard action (copyable status page URL)
         ├── init/index.ts         — lifecycle hooks + first-run setup task
         └── versions/current.ts  — version + release notes
 ```

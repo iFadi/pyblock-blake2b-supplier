@@ -1,10 +1,6 @@
 import { i18n } from '../i18n/index.js'
-import {
-  configFile,
-  mergeConfig,
-  payoutAddressPattern,
-  payoutAddressRegex,
-} from '../fileModels/config.yaml.js'
+import { configFile, mergeConfig } from '../fileModels/config.yaml.js'
+import { payoutAddressPattern, payoutAddressRegex } from '../payout-address.js'
 import { sdk } from '../sdk.js'
 import { bitcoindRpcBridge, bitcoindRpcPort } from '../utils.js'
 import {

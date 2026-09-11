@@ -9,6 +9,7 @@
   },
   "include": [
     "startos/actions/rpc-password.ts",
+    "startos/actions/supplier-dashboard.ts",
     "tests-ts/**/*.ts"
   ]
 }

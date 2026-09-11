@@ -117,7 +117,13 @@ https://b.pyblock.xyz:8443/supplier.php?sid=<first 16 characters of sha256(payou
 ```
 
 This page shows your live/fresh/paused status and the number of templates declared. It is the
-canonical way to confirm that PyBLOCK is receiving your templates without leaving StartOS.
+canonical way to confirm that PyBLOCK is receiving your templates.
+
+You do not need to compute the hash yourself: run the **Supplier Dashboard** action in the
+service's Actions list. It shows the URL as a copyable string derived from your saved payout
+address; copy it into a browser to open the page. If the payout address has not been saved yet,
+or the stored value is not a valid address, the action explains what to fix instead of showing
+a URL.
 
 ## Payout Terms
 

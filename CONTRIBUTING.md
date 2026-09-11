@@ -72,11 +72,12 @@ publishes a package.
 **Release Stage** accepts the exact full source SHA and a tag-shaped candidate
 name. The workflow must itself be dispatched from that SHA and accepts only
 tags in the form `v<major>.<minor>.<patch>-rev<revision>` that exactly match
-`startos/versions/current.ts` (`v1.0.0-rev11` maps to `1.0.0:11`). It builds
-and signs x86_64 and aarch64 once, validates the resulting manifests, package
-version, architecture, `gitHash`, locked dependency inventories, and checksums,
-then attests and uploads the exact bytes as one private GitHub Actions artifact
-retained for three days. Staging creates no tag and no GitHub Release.
+`startos/versions/current.ts` (`v<x>.<y>.<z>-rev<n>` maps to `<x>.<y>.<z>:<n>`;
+for example `v1.0.0-rev12` maps to `1.0.0:12`). It builds and signs x86_64 and
+aarch64 once, validates the resulting manifests, package version, architecture,
+`gitHash`, locked dependency inventories, and checksums, then attests and
+uploads the exact bytes as one private GitHub Actions artifact retained for
+three days. Staging creates no tag and no GitHub Release.
 
 Only the `Build and sign candidate once` step references `DEV_KEY`. It writes
 the key with mode `0600`, unsets the environment value before invoking the
@@ -167,10 +168,13 @@ may be moved or reused.
    issue text, logs, repository-level secrets, or `release-promotion`.
 2. Confirm the intended release commit is on `main` and all CI and Package
    checks have passed. Dispatch **Release Stage** from that exact commit with
-   `source_sha=<full SHA>` and `release_tag=v1.0.0-rev11`. Record the successful
-   run ID. Download the private x86_64 candidate from that run, verify it against
-   `SHA256SUMS`, and target-test that exact signed package on StartOS. Confirm
-   staging created neither a tag nor a GitHub Release.
+   `source_sha=<full SHA>` and `release_tag=<tag>`, where `<tag>` is the
+   `v<major>.<minor>.<patch>-rev<revision>` form of the `version` in
+   `startos/versions/current.ts` (the dispatch default is kept at the current
+   candidate). Record the successful run ID. Download the private x86_64
+   candidate from that run, verify it against `SHA256SUMS`, and target-test
+   that exact signed package on StartOS. Confirm staging created neither a tag
+   nor a GitHub Release.
 3. After explicit approval of those exact staged bytes, create and push one
    signed annotated tag at the staged source commit. The tag ruleset must be
    active; never move or reuse a release tag:
@@ -178,9 +182,9 @@ may be moved or reused.
    ```sh
    git switch main
    git pull --ff-only origin main
-   RELEASE_TAG=v1.0.0-rev11
-   printf '%s\n' "$RELEASE_TAG" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+-rev[0-9]+$'
-   grep -F "version: '1.0.0:11'" startos/versions/current.ts
+   RELEASE_TAG='v<major>.<minor>.<patch>-rev<revision>'   # the tag staged above
+   # Same check the workflows run: tag shape and exact match with current.ts
+   RELEASE_TAG="$RELEASE_TAG" node .github/scripts/validate-release-tag.js
    git ls-remote --exit-code --tags origin "refs/tags/$RELEASE_TAG" && {
      echo "Tag already exists on origin" >&2
      exit 1
