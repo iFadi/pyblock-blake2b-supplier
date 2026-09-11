@@ -65,27 +65,54 @@ distribution. The upstream workflow transitively invokes mutable helper-action
 references, so this accepted trust boundary is intentionally limited to
 non-secret, non-distributable Package builds.
 
-The Release workflow accepts only tags in the form
-`v<major>.<minor>.<patch>-rev<revision>` (for example, `v1.0.0-rev10`). It
-requires an exact match between the tag and `startos/versions/current.ts`
-(`v1.0.0-rev10` maps to `1.0.0:10`), requires the `DEV_KEY` repository secret,
-and creates an initial GitHub **prerelease** containing the signed x86_64 and
-aarch64 `.s9pk` files plus `SHA256SUMS`. Its local jobs reproduce the pinned
-official workflow's QEMU, Docker, Buildx, and containerd image-store setup,
-pin every external action by immutable SHA, and checksum-verify the exact
-`start-cli` v2.0.0 binaries before building or inspecting packages. Only the
-isolated tag-release key-provision step receives the persistent repository
-`DEV_KEY`; the workflow removes key material after each matrix build. It
-verifies package names, architectures, version, release notes, and the manifest
-git hash before using `gh` to create the prerelease. It does not publish to a
-StartOS registry or S3.
+Release publication is split into two manual workflows. A tag push is inert:
+neither workflow listens for `push`, and creating a tag never rebuilds or
+publishes a package.
 
-A manual Release workflow dispatch is a non-publishing rehearsal. Set its
-`release_tag` input to the tag intended for the checked-out package version. It
-validates the same tag-to-version contract, generates ephemeral keys, runs the
-same two-architecture packaging jobs, and uploads one-day verification
-artifacts. The manual path does not reference `DEV_KEY`, and its release job is
-disabled. Run and review this dry run before creating a release tag.
+**Release Stage** accepts the exact full source SHA and a tag-shaped candidate
+name. The workflow must itself be dispatched from that SHA and accepts only
+tags in the form `v<major>.<minor>.<patch>-rev<revision>` that exactly match
+`startos/versions/current.ts` (`v1.0.0-rev10` maps to `1.0.0:10`). It builds
+and signs x86_64 and aarch64 once, validates the resulting manifests, package
+version, architecture, `gitHash`, locked dependency inventories, and checksums,
+then attests and uploads the exact bytes as one private GitHub Actions artifact
+retained for three days. Staging creates no tag and no GitHub Release.
+
+Only the `Build and sign candidate once` step references `DEV_KEY`. It writes
+the key with mode `0600`, unsets the environment value before invoking the
+build, and removes both key copies before any inspection or upload. The secret
+must be an environment secret in `release-staging`; ordinary CI, Package,
+pull-request, push, assembly, and promotion jobs cannot access it.
+
+**Release Promote** is a separate manual workflow. It requires the approved
+Release Stage run ID, exact source SHA, and exact tag. It rejects a staging run
+from another workflow or source, a failed run, a missing, ambiguous, or expired
+artifact, a metadata/checksum mismatch, an invalid attestation, a tag that is
+not a GitHub-verified signed annotated tag at the exact source commit, an
+inactive/mismatched tag-protection ruleset, and an existing release. It
+downloads the staged bytes without building or signing and publishes only the
+two attested `.s9pk` files and their staged `SHA256SUMS` as a prerelease. It
+does not publish to a StartOS registry or S3.
+
+GitHub configuration is part of the release trust boundary and must be created
+manually; these workflows do not alter repository settings:
+
+- Create a `release-staging` Environment and store `DEV_KEY` there. Restrict
+  deployment branches/tags to trusted refs; optional required reviewers add a
+  second gate before the signing jobs.
+- Create a `release-promotion` Environment with required reviewers (including
+  the explicit release approver), prevent self-review, and restrict deployment
+  refs. Do not configure `DEV_KEY` in this environment.
+- Create an active tag ruleset targeting exactly
+  `refs/tags/v*.*.*-rev*` with creation, update, and deletion restrictions.
+  Give only the intended maintainer role a bypass path for initial creation.
+  Set repository variable `RELEASE_TAG_RULESET_ID` to that ruleset's numeric
+  ID. Promotion checks the ruleset and separately requires GitHub's signature
+  verification for the annotated tag object.
+- Keep Actions artifact attestations enabled and allow the workflows' declared
+  `id-token`/`attestations` permissions. Promotion has no signing secret and no
+  build permission; its sole write permission is `contents: write` for the
+  GitHub prerelease.
 
 ## Dependency lock maintenance
 
@@ -95,21 +122,25 @@ The Docker build has three reproducibility boundaries:
   linux/amd64 and linux/arm64 child manifests. Both Dockerfile stages use the
   index digest, so BuildKit selects the locked child for the target platform.
 - `docker/runtime-apk.lock` pins every Alpine package added above the base
-  image. The base image digest fixes all packages already present in that
-  image. Tor 0.4.9.11-r0 is downloaded as the exact architecture-specific,
-  Alpine-signed APK and checked against `docker/tor-apk-sha256.lock` because
-  Alpine's mutable package index no longer selects that tested version.
+  image. The installer records the pre-install and post-install inventories on
+  each architecture, rejects replacement/removal of a base package, and
+  requires the complete added closure to equal the lock exactly. The base image
+  digest fixes packages already present in that image. Tor 0.4.9.11-r0 is
+  downloaded as the exact architecture-specific, Alpine-signed APK and checked
+  against `docker/tor-apk-sha256.lock` because Alpine's mutable package index no
+  longer selects that tested version.
 - `requirements-runtime.txt` and `requirements-test.txt` pin every Python
   package and require SHA-256 verification. PyYAML contains separate accepted
   wheel hashes for x86_64 and aarch64; pure-Python wheels share one hash.
 
 All three boundaries fail closed: a missing version, changed artifact, unknown
-architecture, omitted hash, or changed image digest stops the build or the
-regression suite. The remaining inputs are the checked-out source tree,
-BuildKit/start-cli implementation, and host kernel/emulation. The `.s9pk`
-signature is intentionally not byte-for-byte reproducible because signing can
-introduce build-specific material; validate the embedded manifest, source
-identity, image contents, and checksums for each exact candidate instead.
+architecture, omitted hash, changed closure, or changed image digest stops the
+build or regression suite. This is not a claim of whole-image or `.s9pk` byte
+reproducibility. BuildKit execution, the checksum-pinned `start-cli` binary,
+runner kernel/emulation, archive metadata, and signature generation remain
+boundaries that can change output bytes. The stage workflow therefore builds
+and signs once, records checksums and inventories, attests those exact outputs,
+and requires promotion to reuse those bytes rather than reproduce them.
 
 To update a lock:
 
@@ -131,14 +162,18 @@ may be moved or reused.
 
 ### Maintainer release runbook
 
-1. In **Settings → Secrets and variables → Actions**, configure `DEV_KEY` as a
-   repository secret. Never store the key in Git, command history, workflow
-   inputs, issue text, or logs.
+1. Complete the Environment, ruleset, repository-variable, and attestation
+   setup above. Never store `DEV_KEY` in Git, command history, workflow inputs,
+   issue text, logs, repository-level secrets, or `release-promotion`.
 2. Confirm the intended release commit is on `main` and all CI and Package
-   workflow checks have passed. Manually run the Release workflow with
-   `release_tag=v1.0.0-rev10`; verify both ephemeral dry-run artifacts were
-   produced and confirm that no GitHub Release was created.
-3. Update the example tag below, then create and push one annotated tag:
+   checks have passed. Dispatch **Release Stage** from that exact commit with
+   `source_sha=<full SHA>` and `release_tag=v1.0.0-rev10`. Record the successful
+   run ID. Download the private x86_64 candidate from that run, verify it against
+   `SHA256SUMS`, and target-test that exact signed package on StartOS. Confirm
+   staging created neither a tag nor a GitHub Release.
+3. After explicit approval of those exact staged bytes, create and push one
+   signed annotated tag at the staged source commit. The tag ruleset must be
+   active; never move or reuse a release tag:
 
    ```sh
    git switch main
@@ -150,17 +185,21 @@ may be moved or reused.
      echo "Tag already exists on origin" >&2
      exit 1
    }
-   git tag -a "$RELEASE_TAG" -m "Release $RELEASE_TAG"
+   test "$(git rev-parse HEAD)" = '<staged full source SHA>'
+   git tag -s "$RELEASE_TAG" -m "Release $RELEASE_TAG"
    git push origin "refs/tags/$RELEASE_TAG"
    ```
 
-4. In GitHub Actions, verify the Release workflow completed successfully.
-   Then inspect the GitHub prerelease and independently verify both architecture
-   `.s9pk` assets against `SHA256SUMS` before deciding whether to promote or
-   announce it. Promotion from prerelease remains a separate maintainer action.
+4. Dispatch **Release Promote** from the exact tagged source with the recorded
+   `staging_run_id`, full `source_sha`, and `release_tag`. Approve the protected
+   `release-promotion` Environment only after comparing all three values with
+   the reviewed stage. The workflow verifies and publishes without rebuilding.
+5. Inspect the resulting GitHub prerelease and independently verify both
+   architecture assets against `SHA256SUMS` before announcement or any separate
+   visibility/state change.
 
-Creating the tag is the deployment action: do not reuse or move a published
-release tag. Repository visibility changes remain separate, manual
+Neither tag creation nor tag push is an automated deployment trigger.
+Repository visibility and prerelease-to-final changes remain separate manual
 administrative actions and are not performed by these workflows.
 
 ## Scope note

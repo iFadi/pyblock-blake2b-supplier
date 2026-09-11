@@ -23,6 +23,17 @@ fi
 
 readonly tor_apk=/tmp/tor.apk
 readonly tor_url="https://dl-cdn.alpinelinux.org/alpine/edge/community/$alpine_arch/tor-$tor_version.apk"
+readonly installed_before=/tmp/apk-installed-before
+readonly installed_after=/tmp/apk-installed-after
+readonly added_after=/tmp/apk-added-after
+readonly removed_after=/tmp/apk-removed-after
+
+cleanup() {
+    rm -f "$tor_apk" "$installed_before" "$installed_after" "$added_after" "$removed_after"
+}
+trap cleanup EXIT
+
+apk info -v | sort > "$installed_before"
 wget --output-document "$tor_apk" "$tor_url"
 printf '%s  %s\n' "$tor_sha256" "$tor_apk" | sha256sum -c -
 
@@ -37,14 +48,19 @@ done < "$apk_lock"
 apk add --no-cache "$@" "$tor_apk"
 rm -f "$tor_apk"
 
-installed="$(mktemp)"
-trap 'rm -f "$installed"' EXIT
-apk info -v | sort > "$installed"
-while IFS= read -r requirement; do
-    package="${requirement%%=*}"
-    version="${requirement#*=}"
-    if ! grep -Fqx "$package-$version" "$installed"; then
-        printf 'Locked APK not installed exactly: %s\n' "$requirement" >&2
-        exit 1
-    fi
-done < "$apk_lock"
+apk info -v | sort > "$installed_after"
+comm -13 "$installed_before" "$installed_after" \
+    | sed 's/-\([^-]*-r[0-9][0-9]*\)$/=\1/' \
+    > "$added_after"
+comm -23 "$installed_before" "$installed_after" > "$removed_after"
+
+if [ -s "$removed_after" ]; then
+    printf 'APK installation replaced or removed base-image packages:\n' >&2
+    cat "$removed_after" >&2
+    exit 1
+fi
+
+if ! diff -u "$apk_lock" "$added_after"; then
+    printf 'Installed APK closure differs from docker/runtime-apk.lock for %s\n' "$alpine_arch" >&2
+    exit 1
+fi

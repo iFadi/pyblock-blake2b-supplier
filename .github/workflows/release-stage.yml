@@ -1,0 +1,407 @@
+name: Release Stage
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Exact tag that will identify this candidate after approval
+        required: true
+        default: v1.0.0-rev10
+        type: string
+      source_sha:
+        description: Full 40-character source commit SHA selected for this run
+        required: true
+        type: string
+
+permissions: {}
+
+concurrency:
+  group: release-stage-${{ inputs.source_sha }}
+  cancel-in-progress: false
+
+jobs:
+  validate-source:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      source-sha: ${{ steps.source.outputs.sha }}
+    steps:
+      - name: Check out exact candidate source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ inputs.source_sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Validate dispatch source and release tag
+        id: source
+        env:
+          DISPATCH_SHA: ${{ github.sha }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+        run: |
+          set -euo pipefail
+          [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          test "$DISPATCH_SHA" = "$SOURCE_SHA"
+          checked_out_sha="$(git rev-parse HEAD)"
+          test "$checked_out_sha" = "$SOURCE_SHA"
+          node .github/scripts/validate-release-tag.js
+          printf 'sha=%s\n' "$checked_out_sha" >> "$GITHUB_OUTPUT"
+
+      - name: Require pre-tag and pre-release staging
+        env:
+          GH_REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          set -euo pipefail
+          if gh api "repos/$GH_REPO/git/ref/tags/$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "::error::Tag $RELEASE_TAG already exists; staging must precede tagging"
+            exit 1
+          fi
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "::error::GitHub release $RELEASE_TAG already exists"
+            exit 1
+          fi
+
+  build-signed:
+    needs: validate-source
+    environment: release-staging
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86
+            architecture: x86_64
+            platform: linux/amd64
+            alpine_architecture: x86_64
+            runner: ubuntu-24.04
+            cli_asset: start-cli_x86_64-linux
+            cli_sha256: 830c3b25833fed7cfb16b377172125e35aa75a27a356862776358bd21293023d
+            package_name: pyblock-blake2b-supplier_x86_64.s9pk
+            metadata_prefix: pyblock-blake2b-supplier_x86_64
+          - target: arm
+            architecture: aarch64
+            platform: linux/arm64/v8
+            alpine_architecture: aarch64
+            runner: ubuntu-24.04-arm
+            cli_asset: start-cli_aarch64-linux
+            cli_sha256: 63b067c3491a29bfbcd0424fff4bc04f6baaf501146b55d495563fc9e98cff0f
+            package_name: pyblock-blake2b-supplier_aarch64.s9pk
+            metadata_prefix: pyblock-blake2b-supplier_aarch64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    steps:
+      - name: Check out validated source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ needs.validate-source.outputs.source-sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install build dependencies
+        run: |
+          set -euo pipefail
+          grep -rl 'packages\.microsoft\.com' /etc/apt/sources.list.d/ 2>/dev/null \
+            | sudo xargs -r rm -f || true
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends \
+            build-essential \
+            clang \
+            libclang-dev \
+            qemu-user-static \
+            squashfs-tools-ng
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@1f40c72289eff860ee54a304f1438e3cff362e0a # v4
+
+      - name: Set up Docker with containerd image store
+        uses: docker/setup-docker-action@77e84dbf09b47d1e29270283c22f16145aa85ca1 # v5
+        with:
+          daemon-config: |
+            {
+              "features": {
+                "containerd-snapshotter": true
+              }
+            }
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4
+
+      - name: Verify Docker packaging prerequisites
+        run: |
+          set -euo pipefail
+          docker version
+          docker buildx version
+          docker info --format '{{json .DriverStatus}}' | grep -Fq 'io.containerd.snapshotter.v1'
+
+      - name: Install verified start-cli v2.0.0
+        env:
+          START_CLI_ASSET: ${{ matrix.cli_asset }}
+          START_CLI_SHA256: ${{ matrix.cli_sha256 }}
+          START_CLI_VERSION: 2.0.0
+        run: |
+          set -euo pipefail
+          download_path="$(mktemp)"
+          trap 'rm -f "$download_path"' EXIT
+          download_url="https://github.com/Start9Labs/start-technologies/releases/download/start-cli%2Fv${START_CLI_VERSION}/${START_CLI_ASSET}"
+          curl --fail --location --proto '=https' --tlsv1.2 \
+            --output "$download_path" "$download_url"
+          printf '%s  %s\n' "$START_CLI_SHA256" "$download_path" | sha256sum --check --strict -
+          sudo install --mode 0755 "$download_path" /usr/local/bin/start-cli
+          start-cli --version
+
+      - name: Install package dependencies
+        run: npm ci
+
+      - name: Build and sign candidate once
+        env:
+          BUILD_TARGET: ${{ matrix.target }}
+          DEV_KEY: ${{ secrets.DEV_KEY }}
+          EXPECTED_PACKAGE: ${{ matrix.package_name }}
+        run: |
+          set -euo pipefail
+          umask 077
+          cleanup_key() {
+            rm -f "$HOME/.startos/id.key.pem" .startos/build.key.pem
+            rmdir "$HOME/.startos" .startos 2>/dev/null || true
+          }
+          trap cleanup_key EXIT
+          if [[ -z "$DEV_KEY" ]]; then
+            echo "::error::The release-staging DEV_KEY environment secret is required"
+            exit 1
+          fi
+          mkdir -p "$HOME/.startos" .startos
+          printf '%s' "$DEV_KEY" > "$HOME/.startos/id.key.pem"
+          cp "$HOME/.startos/id.key.pem" .startos/build.key.pem
+          chmod 0600 "$HOME/.startos/id.key.pem" .startos/build.key.pem
+          unset DEV_KEY
+
+          RUST_LOG=debug RUST_BACKTRACE=1 make "$BUILD_TARGET"
+          cleanup_key
+          trap - EXIT
+
+          mapfile -t packages < <(find . -maxdepth 1 -type f -name '*.s9pk' -printf '%f\n' | sort)
+          if [[ ${#packages[@]} -ne 1 || "${packages[0]:-}" != "$EXPECTED_PACKAGE" ]]; then
+            printf '::error::Expected only %s; found: %s\n' "$EXPECTED_PACKAGE" "${packages[*]:-none}"
+            exit 1
+          fi
+          test -s "$EXPECTED_PACKAGE"
+
+      - name: Inspect package and record dependency inventory
+        env:
+          ALPINE_ARCHITECTURE: ${{ matrix.alpine_architecture }}
+          ARCHITECTURE: ${{ matrix.architecture }}
+          EXPECTED_PACKAGE: ${{ matrix.package_name }}
+          PLATFORM: ${{ matrix.platform }}
+          SOURCE_SHA: ${{ needs.validate-source.outputs.source-sha }}
+        run: |
+          set -euo pipefail
+          prefix="${EXPECTED_PACKAGE%.s9pk}"
+          start-cli s9pk inspect "$EXPECTED_PACKAGE" manifest | jq --sort-keys . > "${prefix}.manifest.json"
+          runtime_apks="$(jq -Rsc 'split("\n") | map(select(length > 0))' < docker/runtime-apk.lock)"
+          base_image="$(jq --arg platform "$PLATFORM" \
+            '{image, indexDigest, platformDigest: .platforms[$platform]}' docker/base-images.lock.json)"
+          jq -n \
+            --arg sourceSha "$SOURCE_SHA" \
+            --arg architecture "$ARCHITECTURE" \
+            --arg alpineArchitecture "$ALPINE_ARCHITECTURE" \
+            --argjson baseImage "$base_image" \
+            --argjson runtimeApks "$runtime_apks" \
+            --arg runtimeApkClosureSha256 "$(sha256sum docker/runtime-apk.lock | cut -d' ' -f1)" \
+            --arg torApkSha256 "$(awk -v arch="$ALPINE_ARCHITECTURE" '$1 == arch { print $2 }' docker/tor-apk-sha256.lock)" \
+            --arg pythonRuntimeRequirementsSha256 "$(sha256sum requirements-runtime.txt | cut -d' ' -f1)" \
+            --arg npmLockSha256 "$(sha256sum package-lock.json | cut -d' ' -f1)" \
+            '{schemaVersion: 1, $sourceSha, $architecture, $alpineArchitecture, $baseImage, $runtimeApks, $runtimeApkClosureSha256, $torApkSha256, $pythonRuntimeRequirementsSha256, $npmLockSha256}' \
+            > "${prefix}.dependency-inventory.json"
+          sha256sum "$EXPECTED_PACKAGE" > "${EXPECTED_PACKAGE}.sha256"
+
+      - name: Prove signing key cleanup
+        if: ${{ always() }}
+        run: |
+          set -euo pipefail
+          test ! -e "$HOME/.startos/id.key.pem"
+          test ! -e .startos/build.key.pem
+
+      - name: Upload architecture staging payload
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: stage-build-${{ matrix.architecture }}
+          path: |
+            ./${{ matrix.package_name }}
+            ./${{ matrix.package_name }}.sha256
+            ./${{ matrix.metadata_prefix }}.manifest.json
+            ./${{ matrix.metadata_prefix }}.dependency-inventory.json
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 1
+
+  assemble-stage:
+    needs: [validate-source, build-signed]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    steps:
+      - name: Check out validated source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ needs.validate-source.outputs.source-sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Install verified start-cli v2.0.0
+        env:
+          START_CLI_ASSET: start-cli_x86_64-linux
+          START_CLI_SHA256: 830c3b25833fed7cfb16b377172125e35aa75a27a356862776358bd21293023d
+          START_CLI_VERSION: 2.0.0
+        run: |
+          set -euo pipefail
+          download_path="$(mktemp)"
+          trap 'rm -f "$download_path"' EXIT
+          download_url="https://github.com/Start9Labs/start-technologies/releases/download/start-cli%2Fv${START_CLI_VERSION}/${START_CLI_ASSET}"
+          curl --fail --location --proto '=https' --tlsv1.2 \
+            --output "$download_path" "$download_url"
+          printf '%s  %s\n' "$START_CLI_SHA256" "$download_path" | sha256sum --check --strict -
+          sudo install --mode 0755 "$download_path" /usr/local/bin/start-cli
+          start-cli --version
+
+      - name: Download this run's architecture payloads
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          pattern: stage-build-*
+          merge-multiple: true
+          path: release-assets
+
+      - name: Validate and describe exact staged bytes
+        env:
+          EXPECTED_VERSION: 1.0.0:10
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          SOURCE_SHA: ${{ needs.validate-source.outputs.source-sha }}
+        run: |
+          set -euo pipefail
+          cd release-assets
+          expected_packages=(
+            pyblock-blake2b-supplier_aarch64.s9pk
+            pyblock-blake2b-supplier_x86_64.s9pk
+          )
+          expected_entries=()
+          for package in "${expected_packages[@]}"; do
+            prefix="${package%.s9pk}"
+            expected_entries+=("$package" "$package.sha256" "${prefix}.manifest.json" "${prefix}.dependency-inventory.json")
+          done
+          mapfile -t expected_entries < <(printf '%s\n' "${expected_entries[@]}" | sort)
+          mapfile -t collected < <(find . -mindepth 1 -maxdepth 1 -type f -printf '%f\n' | sort)
+          if [[ "${collected[*]}" != "${expected_entries[*]}" ]]; then
+            printf '::error::Unexpected architecture staging entries: %s\n' "${collected[*]:-none}"
+            exit 1
+          fi
+
+          release_notes=''
+          for package in "${expected_packages[@]}"; do
+            prefix="${package%.s9pk}"
+            sha256sum --check --strict "$package.sha256"
+            manifest="$(start-cli s9pk inspect "$package" manifest)"
+            diff -u <(jq --sort-keys . "${prefix}.manifest.json") <(jq --sort-keys . <<<"$manifest")
+            version="$(jq --exit-status --raw-output '.version' <<<"$manifest")"
+            test "$version" = "$EXPECTED_VERSION"
+            case "$package" in
+              *_aarch64.s9pk) expected_arch=aarch64; platform=linux/arm64/v8; alpine_arch=aarch64 ;;
+              *_x86_64.s9pk) expected_arch=x86_64; platform=linux/amd64; alpine_arch=x86_64 ;;
+              *) exit 1 ;;
+            esac
+            arch="$(jq --exit-status --raw-output '[.images[].arch // empty] | flatten | unique | if length == 1 then .[0] else error("expected one architecture") end' <<<"$manifest")"
+            test "$arch" = "$expected_arch"
+            test "$(jq --raw-output '.gitHash // empty' <<<"$manifest")" = "$SOURCE_SHA"
+
+            inventory="${prefix}.dependency-inventory.json"
+            jq --exit-status \
+              --arg source "$SOURCE_SHA" \
+              --arg arch "$expected_arch" \
+              --arg alpine "$alpine_arch" \
+              --arg index "$(jq -r '.indexDigest' ../docker/base-images.lock.json)" \
+              --arg child "$(jq -r --arg platform "$platform" '.platforms[$platform]' ../docker/base-images.lock.json)" \
+              --arg closure "$(sha256sum ../docker/runtime-apk.lock | cut -d' ' -f1)" \
+              --arg tor "$(awk -v arch="$alpine_arch" '$1 == arch { print $2 }' ../docker/tor-apk-sha256.lock)" \
+              --arg python "$(sha256sum ../requirements-runtime.txt | cut -d' ' -f1)" \
+              --arg npm "$(sha256sum ../package-lock.json | cut -d' ' -f1)" \
+              '(.schemaVersion == 1) and (.sourceSha == $source) and (.architecture == $arch) and (.alpineArchitecture == $alpine) and (.baseImage.indexDigest == $index) and (.baseImage.platformDigest == $child) and (.runtimeApkClosureSha256 == $closure) and (.torApkSha256 == $tor) and (.pythonRuntimeRequirementsSha256 == $python) and (.npmLockSha256 == $npm)' \
+              "$inventory" >/dev/null
+            diff -u \
+              <(jq -Rsc 'split("\n") | map(select(length > 0))' ../docker/runtime-apk.lock) \
+              <(jq '.runtimeApks' "$inventory")
+
+            notes="$(jq --exit-status --raw-output '.releaseNotes | if type == "object" then (.en_US // first(.[]) // "") else . end' <<<"$manifest")"
+            test -n "$notes"
+            if [[ -z "$release_notes" ]]; then
+              release_notes="$notes"
+            else
+              test "$notes" = "$release_notes"
+            fi
+          done
+
+          sha256sum "${expected_packages[@]}" > SHA256SUMS
+          rm -f -- "${expected_packages[0]}.sha256" "${expected_packages[1]}.sha256"
+
+          aarch64_package="${expected_packages[0]}"
+          x86_package="${expected_packages[1]}"
+          jq -n \
+            --arg repository "$GITHUB_REPOSITORY" \
+            --arg workflow ".github/workflows/release-stage.yml" \
+            --argjson runId "$GITHUB_RUN_ID" \
+            --argjson runAttempt "$GITHUB_RUN_ATTEMPT" \
+            --arg sourceSha "$SOURCE_SHA" \
+            --arg releaseTag "$RELEASE_TAG" \
+            --arg expectedVersion "$EXPECTED_VERSION" \
+            --arg aarch64Package "$aarch64_package" \
+            --arg aarch64Sha256 "$(sha256sum "$aarch64_package" | cut -d' ' -f1)" \
+            --arg aarch64ManifestSha256 "$(sha256sum "${aarch64_package%.s9pk}.manifest.json" | cut -d' ' -f1)" \
+            --arg aarch64InventorySha256 "$(sha256sum "${aarch64_package%.s9pk}.dependency-inventory.json" | cut -d' ' -f1)" \
+            --arg x86Package "$x86_package" \
+            --arg x86Sha256 "$(sha256sum "$x86_package" | cut -d' ' -f1)" \
+            --arg x86ManifestSha256 "$(sha256sum "${x86_package%.s9pk}.manifest.json" | cut -d' ' -f1)" \
+            --arg x86InventorySha256 "$(sha256sum "${x86_package%.s9pk}.dependency-inventory.json" | cut -d' ' -f1)" \
+            '{schemaVersion: 1, operation: "stage", $repository, $workflow, $runId, $runAttempt, $sourceSha, $releaseTag, $expectedVersion, artifacts: [{architecture: "aarch64", package: $aarch64Package, sha256: $aarch64Sha256, manifestSha256: $aarch64ManifestSha256, dependencyInventorySha256: $aarch64InventorySha256}, {architecture: "x86_64", package: $x86Package, sha256: $x86Sha256, manifestSha256: $x86ManifestSha256, dependencyInventorySha256: $x86InventorySha256}]}' \
+            > stage-manifest.json
+          {
+            echo "## What's Changed"
+            echo
+            printf '%s\n' "$release_notes"
+            echo
+            echo "## SHA256 Hashes"
+            echo '```text'
+            cat SHA256SUMS
+            echo '```'
+          } > release-notes.md
+
+      - name: Attest every staged subject
+        uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3
+        with:
+          subject-path: release-assets/*
+
+      - name: Upload private signed release stage
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: release-stage-${{ needs.validate-source.outputs.source-sha }}
+          path: release-assets/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 3

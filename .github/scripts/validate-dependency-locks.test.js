@@ -66,6 +66,11 @@ test('the complete runtime APK addition set is exact and Tor is artifact-hashed'
   assert.match(installer, /sha256sum (?:--check|-c)/)
   assert.match(installer, /amd64\) alpine_arch=x86_64/)
   assert.match(installer, /arm64\) alpine_arch=aarch64/)
+  assert.match(installer, /apk info -v \| sort > "\$installed_before"/)
+  assert.match(installer, /comm -13 "\$installed_before" "\$installed_after"/)
+  assert.match(installer, /comm -23 "\$installed_before" "\$installed_after"/)
+  assert.match(installer, /diff -u "\$apk_lock" "\$added_after"/)
+  assert.match(installer, /replaced or removed base-image packages/)
   assert.doesNotMatch(installer, /apk\s+(?:upgrade|update)/)
 })
 

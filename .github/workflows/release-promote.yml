@@ -1,0 +1,241 @@
+name: Release Promote
+
+on:
+  workflow_dispatch:
+    inputs:
+      staging_run_id:
+        description: Successful Release Stage workflow run ID containing the approved bytes
+        required: true
+        type: string
+      source_sha:
+        description: Exact 40-character source SHA recorded by the staging run
+        required: true
+        type: string
+      release_tag:
+        description: Protected signed annotated tag at the exact source SHA
+        required: true
+        default: v1.0.0-rev10
+        type: string
+
+permissions: {}
+
+concurrency:
+  group: release-promote-${{ inputs.release_tag }}
+  cancel-in-progress: false
+
+jobs:
+  validate-request:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      source-sha: ${{ steps.source.outputs.sha }}
+    steps:
+      - name: Check out exact approved source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ inputs.source_sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Validate pinned promotion request
+        id: source
+        env:
+          DISPATCH_SHA: ${{ github.sha }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+          STAGING_RUN_ID: ${{ inputs.staging_run_id }}
+        run: |
+          set -euo pipefail
+          [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$STAGING_RUN_ID" =~ ^[1-9][0-9]*$ ]]
+          test "$DISPATCH_SHA" = "$SOURCE_SHA"
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          node .github/scripts/validate-release-tag.js
+          printf 'sha=%s\n' "$SOURCE_SHA" >> "$GITHUB_OUTPUT"
+
+  promote:
+    needs: validate-request
+    environment: release-promotion
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      actions: read
+      attestations: read
+      contents: write
+    steps:
+      - name: Check out exact approved source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ needs.validate-request.outputs.source-sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Verify staging run and unique unexpired artifact
+        env:
+          GH_REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_SHA: ${{ needs.validate-request.outputs.source-sha }}
+          STAGING_RUN_ID: ${{ inputs.staging_run_id }}
+        run: |
+          set -euo pipefail
+          run="$(gh api "repos/$GH_REPO/actions/runs/$STAGING_RUN_ID")"
+          jq --exit-status \
+            --arg source "$SOURCE_SHA" \
+            '(.event == "workflow_dispatch") and (.status == "completed") and (.conclusion == "success") and (.head_sha == $source) and (.path == ".github/workflows/release-stage.yml")' \
+            <<<"$run" >/dev/null
+
+          expected_name="release-stage-${SOURCE_SHA}"
+          artifacts="$(gh api "repos/$GH_REPO/actions/runs/$STAGING_RUN_ID/artifacts?per_page=100")"
+          count="$(jq --arg name "$expected_name" '[.artifacts[] | select(.name == $name)] | length' <<<"$artifacts")"
+          test "$count" -eq 1
+          jq --exit-status --arg name "$expected_name" --argjson runId "$STAGING_RUN_ID" \
+            '.artifacts[] | select(.name == $name) | (.expired == false) and (.workflow_run.id == $runId)' \
+            <<<"$artifacts" >/dev/null
+
+      - name: Download exact staged artifact without rebuilding
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: release-stage-${{ needs.validate-request.outputs.source-sha }}
+          path: release-assets
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.staging_run_id }}
+
+      - name: Verify staged artifact attestations
+        env:
+          GH_REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mapfile -t subjects < <(find release-assets -mindepth 1 -maxdepth 1 -type f -print | sort)
+          test ${#subjects[@]} -eq 9
+          for subject in "${subjects[@]}"; do
+            gh attestation verify "$subject" \
+              --repo "$GH_REPO" \
+              --signer-workflow "$GH_REPO/.github/workflows/release-stage.yml"
+          done
+
+      - name: Install verified start-cli v2.0.0 for inspection only
+        env:
+          START_CLI_ASSET: start-cli_x86_64-linux
+          START_CLI_SHA256: 830c3b25833fed7cfb16b377172125e35aa75a27a356862776358bd21293023d
+          START_CLI_VERSION: 2.0.0
+        run: |
+          set -euo pipefail
+          download_path="$(mktemp)"
+          trap 'rm -f "$download_path"' EXIT
+          download_url="https://github.com/Start9Labs/start-technologies/releases/download/start-cli%2Fv${START_CLI_VERSION}/${START_CLI_ASSET}"
+          curl --fail --location --proto '=https' --tlsv1.2 \
+            --output "$download_path" "$download_url"
+          printf '%s  %s\n' "$START_CLI_SHA256" "$download_path" | sha256sum --check --strict -
+          sudo install --mode 0755 "$download_path" /usr/local/bin/start-cli
+          start-cli --version
+
+      - name: Verify exact bytes, metadata, and source identity
+        env:
+          EXPECTED_VERSION: 1.0.0:10
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          SOURCE_SHA: ${{ needs.validate-request.outputs.source-sha }}
+          STAGING_RUN_ID: ${{ inputs.staging_run_id }}
+        run: |
+          set -euo pipefail
+          cd release-assets
+          expected=(
+            SHA256SUMS
+            pyblock-blake2b-supplier_aarch64.dependency-inventory.json
+            pyblock-blake2b-supplier_aarch64.manifest.json
+            pyblock-blake2b-supplier_aarch64.s9pk
+            pyblock-blake2b-supplier_x86_64.dependency-inventory.json
+            pyblock-blake2b-supplier_x86_64.manifest.json
+            pyblock-blake2b-supplier_x86_64.s9pk
+            release-notes.md
+            stage-manifest.json
+          )
+          mapfile -t collected < <(find . -mindepth 1 -maxdepth 1 -type f -printf '%f\n' | sort)
+          test "${collected[*]}" = "${expected[*]}"
+          test "$(wc -l < SHA256SUMS)" -eq 2
+          sha256sum --check --strict SHA256SUMS
+
+          jq --exit-status \
+            --arg repository "$GITHUB_REPOSITORY" \
+            --argjson runId "$STAGING_RUN_ID" \
+            --arg source "$SOURCE_SHA" \
+            --arg tag "$RELEASE_TAG" \
+            --arg version "$EXPECTED_VERSION" \
+            '(.schemaVersion == 1) and (.operation == "stage") and (.repository == $repository) and (.workflow == ".github/workflows/release-stage.yml") and (.runId == $runId) and (.sourceSha == $source) and (.releaseTag == $tag) and (.expectedVersion == $version) and ([.artifacts[].architecture] == ["aarch64", "x86_64"])' \
+            stage-manifest.json >/dev/null
+
+          for package in pyblock-blake2b-supplier_aarch64.s9pk pyblock-blake2b-supplier_x86_64.s9pk; do
+            prefix="${package%.s9pk}"
+            case "$package" in
+              *_aarch64.s9pk) expected_arch=aarch64 ;;
+              *_x86_64.s9pk) expected_arch=x86_64 ;;
+              *) exit 1 ;;
+            esac
+            manifest="$(start-cli s9pk inspect "$package" manifest)"
+            diff -u <(jq --sort-keys . "${prefix}.manifest.json") <(jq --sort-keys . <<<"$manifest")
+            test "$(jq --raw-output '.version' <<<"$manifest")" = "$EXPECTED_VERSION"
+            test "$(jq --raw-output '.gitHash // empty' <<<"$manifest")" = "$SOURCE_SHA"
+            test "$(jq --raw-output '[.images[].arch // empty] | flatten | unique | if length == 1 then .[0] else error("expected one architecture") end' <<<"$manifest")" = "$expected_arch"
+            test "$(jq --raw-output '.sourceSha' "${prefix}.dependency-inventory.json")" = "$SOURCE_SHA"
+            test "$(jq --raw-output '.architecture' "${prefix}.dependency-inventory.json")" = "$expected_arch"
+            test "$(jq --raw-output --arg arch "$expected_arch" '.artifacts[] | select(.architecture == $arch) | .sha256' stage-manifest.json)" = "$(sha256sum "$package" | cut -d' ' -f1)"
+            test "$(jq --raw-output --arg arch "$expected_arch" '.artifacts[] | select(.architecture == $arch) | .manifestSha256' stage-manifest.json)" = "$(sha256sum "${prefix}.manifest.json" | cut -d' ' -f1)"
+            test "$(jq --raw-output --arg arch "$expected_arch" '.artifacts[] | select(.architecture == $arch) | .dependencyInventorySha256' stage-manifest.json)" = "$(sha256sum "${prefix}.dependency-inventory.json" | cut -d' ' -f1)"
+          done
+
+      - name: Verify protected signed annotated tag and absent release
+        env:
+          GH_REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          RULESET_ID: ${{ vars.RELEASE_TAG_RULESET_ID }}
+          SOURCE_SHA: ${{ needs.validate-request.outputs.source-sha }}
+        run: |
+          set -euo pipefail
+          [[ "$RULESET_ID" =~ ^[1-9][0-9]*$ ]]
+          ruleset="$(gh api "repos/$GH_REPO/rulesets/$RULESET_ID")"
+          jq --exit-status \
+            '(.target == "tag") and (.enforcement == "active") and (.conditions.ref_name.include | index("refs/tags/v*.*.*-rev*") != null) and ([.rules[].type] | (index("creation") != null) and (index("update") != null) and (index("deletion") != null))' \
+            <<<"$ruleset" >/dev/null
+
+          ref="$(gh api "repos/$GH_REPO/git/ref/tags/$RELEASE_TAG")"
+          test "$(jq -r '.object.type' <<<"$ref")" = tag
+          tag_object_sha="$(jq -r '.object.sha' <<<"$ref")"
+          tag_object="$(gh api "repos/$GH_REPO/git/tags/$tag_object_sha")"
+          jq --exit-status \
+            --arg tag "$RELEASE_TAG" \
+            --arg source "$SOURCE_SHA" \
+            '(.tag == $tag) and (.object.type == "commit") and (.object.sha == $source) and (.verification.verified == true)' \
+            <<<"$tag_object" >/dev/null
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "::error::GitHub release $RELEASE_TAG already exists"
+            exit 1
+          fi
+
+      - name: Publish exact approved staged bytes as a prerelease
+        env:
+          GH_REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          set -euo pipefail
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "::error::GitHub release $RELEASE_TAG already exists"
+            exit 1
+          fi
+          gh release create "$RELEASE_TAG" \
+            --verify-tag \
+            --prerelease \
+            --title "1.0.0:10" \
+            --notes-file release-assets/release-notes.md \
+            release-assets/pyblock-blake2b-supplier_aarch64.s9pk \
+            release-assets/pyblock-blake2b-supplier_x86_64.s9pk \
+            release-assets/SHA256SUMS
