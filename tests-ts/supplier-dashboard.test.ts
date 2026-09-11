@@ -51,7 +51,7 @@ test('sid is the first 16 hex characters of sha256(payout address)', () => {
   assert.equal(supplierSid(p2pkhAddress), p2pkhSid)
   assert.equal(
     supplierDashboardUrl(bech32Address),
-    `${dashboardBaseUrl}?sid=${bech32Sid}`,
+    `${dashboardBaseUrl}?s=${bech32Sid}`,
   )
 })
 
@@ -65,7 +65,7 @@ test('a valid stored address yields the exact copyable dashboard URL', async () 
       'Copy this URL into a browser to view your supplier status page. It is derived from your payout address.',
     result: {
       type: 'single',
-      value: `https://b.pyblock.xyz:8443/supplier.php?sid=${bech32Sid}`,
+      value: `https://b.pyblock.xyz:8443/supplier.php?s=${bech32Sid}`,
       copyable: true,
       qr: false,
       masked: false,
@@ -79,7 +79,7 @@ test('accepts every address family the Configure action accepts', async () => {
   assert.equal(result.result?.type, 'single')
   assert.equal(
     result.result?.value,
-    `https://b.pyblock.xyz:8443/supplier.php?sid=${p2pkhSid}`,
+    `https://b.pyblock.xyz:8443/supplier.php?s=${p2pkhSid}`,
   )
 })
 

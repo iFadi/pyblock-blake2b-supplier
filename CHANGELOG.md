@@ -4,10 +4,13 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [1.0.0-rev12] — 2026-09-11
+## [1.0.0-rev13] — 2026-09-11
 
 ### Added
-- **Supplier Dashboard action:** a user-invoked StartOS action that displays the operator's PyBLOCK supplier status page URL as a copyable string. The URL (`https://b.pyblock.xyz:8443/supplier.php?sid=<sid>`) is computed from the first 16 hex characters of `sha256(payout_address)` — no manual calculation needed. The address is validated with the same rule as the Configure action before hashing; a missing, blank, or invalid address, or an unreadable `config.yaml`, produces an operator-facing message instead of a URL and never echoes configuration contents.
+- **Supplier Dashboard action:** a user-invoked StartOS action that displays the operator's PyBLOCK supplier status page URL as a copyable string. The URL (`https://b.pyblock.xyz:8443/supplier.php?s=<sid>`) is computed from the first 16 hex characters of `sha256(payout_address)` — no manual calculation needed. The address is validated with the same rule as the Configure action before hashing; a missing, blank, or invalid address, or an unreadable `config.yaml`, produces an operator-facing message instead of a URL and never echoes configuration contents.
+
+### Fixed
+- Dashboard URL query parameter corrected from `?sid=` to `?s=` to match the PyBLOCK supplier portal's actual URL scheme.
 
 ## [1.0.0-rev11] — 2026-09-11
 

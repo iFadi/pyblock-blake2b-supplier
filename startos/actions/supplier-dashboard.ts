@@ -4,7 +4,7 @@ import { i18n } from '../i18n/index.js'
 import { payoutAddressRegex } from '../payout-address.js'
 
 /**
- * Public PyBLOCK supplier status page. The `sid` query parameter selects the
+ * Public PyBLOCK supplier status page. The `s` query parameter selects the
  * supplier; see `instructions.md` → "Supplier Dashboard".
  */
 export const dashboardBaseUrl = 'https://b.pyblock.xyz:8443/supplier.php'
@@ -37,7 +37,7 @@ export const supplierSid = (payoutAddress: string): string =>
   createHash('sha256').update(payoutAddress, 'utf8').digest('hex').slice(0, 16)
 
 export const supplierDashboardUrl = (payoutAddress: string): string =>
-  `${dashboardBaseUrl}?sid=${supplierSid(payoutAddress)}`
+  `${dashboardBaseUrl}?s=${supplierSid(payoutAddress)}`
 
 /** Fixed-text audit line: never append the error, the path, or any config value. */
 export const configUnreadableAuditMessage =

@@ -113,7 +113,7 @@ Every template `POST` returns a JSON body. The supplier maps these to the health
 Every supplier has a public status page at:
 
 ```
-https://b.pyblock.xyz:8443/supplier.php?sid=<first 16 characters of sha256(payout_address)>
+https://b.pyblock.xyz:8443/supplier.php?s=<first 16 characters of sha256(payout_address)>
 ```
 
 This page shows your live/fresh/paused status and the number of templates declared. It is the
