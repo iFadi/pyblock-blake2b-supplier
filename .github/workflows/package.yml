@@ -15,4 +15,4 @@ concurrency:
 
 jobs:
   build:
-    uses: Start9Labs/start-technologies/.github/workflows/build.yml@f7dcde71be804af424350b48c8b73aba03f41321
+    uses: Start9Labs/start-technologies/.github/workflows/build.yml@69010348792eaf9a18dac80b7db154a4a2503f02
