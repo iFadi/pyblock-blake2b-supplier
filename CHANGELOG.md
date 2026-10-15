@@ -12,6 +12,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Distinguish a local Tor failure from a PyBLOCK publish target that Tor cannot reach.
 - Suppress duplicate application progress logs while continuing to refresh the health record on every attempt.
 - Preserve fail-closed Tor behavior; no automatic clearnet fallback was added.
+- Re-pin the runtime image's Tor APK to `tor-0.4.9.14-r0`, the version now published on Alpine edge/community; the previously locked `0.4.9.11-r0` build was superseded and removed from the mirror, breaking runtime image builds with a 404. Both architecture SHA-256 hashes were independently re-verified against the live, signature-verified package index, and `docker/runtime-apk.lock` was regenerated from an actual install run to also pick up `libseccomp` moving to `2.6.1-r0` in the current closure.
 
 ## [1.0.0-rev13] — 2026-09-11
 

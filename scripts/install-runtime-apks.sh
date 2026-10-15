@@ -4,7 +4,7 @@ set -eu
 readonly lock_dir=/tmp/dependency-locks
 readonly apk_lock="$lock_dir/runtime-apk.lock"
 readonly tor_hash_lock="$lock_dir/tor-apk-sha256.lock"
-readonly tor_version=0.4.9.11-r0
+readonly tor_version=0.4.9.14-r0
 
 case "${TARGETARCH:-}" in
     amd64) alpine_arch=x86_64 ;;
