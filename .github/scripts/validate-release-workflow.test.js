@@ -23,10 +23,11 @@ function exactly(source, pattern, expected, description) {
 test('all release version surfaces match the authoritative StartOS version', () => {
   const versionSource = readFileSync('startos/versions/current.ts', 'utf8')
   const versions = matches(versionSource, /^\s*version:\s*'([^']+)'\s*,\s*$/gm)
-  assert.deepEqual(versions, ['1.0.0:13'])
+  assert.deepEqual(versions, ['1.0.0:14'])
   const versionMatch = versions[0].match(/^([0-9]+\.[0-9]+\.[0-9]+):([0-9]+)$/)
   assert.ok(versionMatch)
   const expectedTag = `v${versionMatch[1]}-rev${versionMatch[2]}`
+  const priorRevision = Number(versionMatch[2]) - 1
 
   exactly(`${stage}\n${promote}`, /^\s*default:\s*(v[^\s]+)\s*$/gm,
     [expectedTag, expectedTag], 'dispatch defaults must match')
@@ -34,6 +35,26 @@ test('all release version surfaces match the authoritative StartOS version', () 
     [versions[0], versions[0]], 'manifest expectations must match')
   exactly(promote, /^\s*--title\s+"([^"]+)"\s*\\\s*$/gm,
     [versions[0]], 'release title must match')
+
+  const tagTestPath = '.github/scripts/validate-release-tag.test.js'
+  const tagTest = readFileSync(tagTestPath, 'utf8')
+  const acceptedTagMatch = tagTest.match(
+    /test\('accepts the exact revision-\d+ tag', \(\) => \{\s*\n\s*const result = validate\('([^']+)'\)\s*\n\s*assert\.equal\(result\.status, 0, result\.stderr\)\s*\n\s*assert\.match\(result\.stdout, \/Validated ([^/]+?) against package version ([^/]+?)\/\)/,
+  )
+  assert.ok(acceptedTagMatch, `${tagTestPath} must contain a recognizable accepted-tag fixture`)
+  const [, acceptedTag, assertedTag, assertedVersion] = acceptedTagMatch
+  assert.equal(acceptedTag, expectedTag, 'tag-validation accepted fixture must match canonical tag')
+  assert.equal(assertedTag.replace(/\\\./g, '.'), expectedTag, 'tag-validation stdout fixture must match canonical tag')
+  assert.equal(assertedVersion.replace(/\\\./g, '.'), versions[0], 'tag-validation stdout fixture must match canonical version')
+
+  const rejectedListMatch = tagTest.match(/for \(const tag of \[([^\]]+)\]\)/)
+  assert.ok(rejectedListMatch, `${tagTestPath} must contain a rejected-prior-revision fixture list`)
+  const rejectedRevisions = [...rejectedListMatch[1].matchAll(/-rev(\d+)'/g)].map(([, rev]) => Number(rev))
+  assert.ok(rejectedRevisions.length > 0, 'rejected-prior-revision fixture list must not be empty')
+  assert.equal(Math.max(...rejectedRevisions), priorRevision,
+    'tag-validation fixtures must reject the immediately preceding revision')
+  assert.ok(!rejectedRevisions.includes(Number(versionMatch[2])),
+    'tag-validation fixtures must not reject the current canonical revision')
 })
 
 test('tag pushes cannot stage, rebuild, or publish', () => {
@@ -99,7 +120,7 @@ test('staging is source-pinned, secret-isolated, two-architecture, and non-publi
   assert.match(stage, /test ! -e "\$HOME\/\.startos\/id\.key\.pem"/)
   exactly(stage, /^\s{12}architecture:\s*(x86_64|aarch64)\s*$/gm,
     ['x86_64', 'aarch64'], 'stage architecture matrix must be exact')
-  assert.match(stage, /EXPECTED_VERSION: 1\.0\.0:13/)
+  assert.match(stage, /EXPECTED_VERSION: 1\.0\.0:14/)
   assert.match(stage, /\.gitHash \/\/ empty/)
   assert.match(stage, /runtimeApkClosureSha256/)
   assert.match(stage, /pythonRuntimeRequirementsSha256/)

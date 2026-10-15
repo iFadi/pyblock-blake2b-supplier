@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.0.0-rev14] — 2026-10-16
+
 ### Fixed
 - Bound each Tor readiness attempt to 10 seconds inside the existing 180-second readiness window, preventing a live supplier from crossing the 60-second health staleness threshold while a target is unavailable.
 - Refresh failing health before blocking Tor probes and preserve the precise dependency failure across retries.
