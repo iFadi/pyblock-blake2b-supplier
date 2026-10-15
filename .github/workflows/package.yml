@@ -38,6 +38,8 @@ jobs:
     steps:
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
 
       - name: Set up Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
@@ -103,9 +105,11 @@ jobs:
       - name: Generate ephemeral signing key
         run: |
           set -euo pipefail
+          umask 077
           mkdir -p "$HOME/.startos" .startos
           start-cli init-key
           cp "$HOME/.startos/id.key.pem" .startos/build.key.pem
+          chmod 0600 "$HOME/.startos/id.key.pem" .startos/build.key.pem
 
       - name: Build candidate package
         env:
@@ -121,6 +125,15 @@ jobs:
             exit 1
           fi
           test -s "$EXPECTED_PACKAGE"
+
+      - name: Clean up ephemeral signing key
+        if: ${{ always() }}
+        run: |
+          set -euo pipefail
+          rm -f "$HOME/.startos/id.key.pem" .startos/build.key.pem
+          rmdir "$HOME/.startos" .startos 2>/dev/null || true
+          test ! -e "$HOME/.startos/id.key.pem"
+          test ! -e .startos/build.key.pem
 
       - name: Upload candidate package artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7

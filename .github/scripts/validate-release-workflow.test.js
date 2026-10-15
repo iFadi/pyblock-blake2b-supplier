@@ -216,4 +216,42 @@ test('package builds both architectures directly with pinned actions and an ephe
   assert.match(packageWorkflow, /start-cli init-key/)
   assert.doesNotMatch(packageWorkflow, /DEV_KEY/)
   assert.doesNotMatch(packageWorkflow, /secrets\./)
+  assert.match(packageWorkflow, /umask 077/)
+  assert.match(packageWorkflow, /chmod 0600 "\$HOME\/\.startos\/id\.key\.pem" \.startos\/build\.key\.pem/)
+})
+
+test('package checkout does not persist credentials for untrusted PR builds', () => {
+  const checkoutStep = packageDocument.jobs.build.steps.find(
+    (step) => typeof step.uses === 'string' && step.uses.startsWith('actions/checkout@'),
+  )
+  assert.ok(checkoutStep, 'package.yml must check out source')
+  assert.equal(checkoutStep.with?.['persist-credentials'], false,
+    'checkout must not persist credentials that untrusted PR build steps could read from git config')
+})
+
+test('package cleans up the ephemeral signing key after build and before artifact upload, even on failure', () => {
+  const steps = packageDocument.jobs.build.steps
+  const buildIndex = steps.findIndex((step) => step.name === 'Build candidate package')
+  const cleanupIndex = steps.findIndex((step) => step.name === 'Clean up ephemeral signing key')
+  const uploadIndex = steps.findIndex(
+    (step) => typeof step.uses === 'string' && step.uses.startsWith('actions/upload-artifact@'),
+  )
+  assert.ok(buildIndex !== -1, 'package.yml must contain the build step')
+  assert.ok(cleanupIndex !== -1, 'package.yml must contain a signing-key cleanup step')
+  assert.ok(uploadIndex !== -1, 'package.yml must contain the artifact upload step')
+  assert.ok(cleanupIndex > buildIndex, 'cleanup must run after the build step')
+  assert.ok(uploadIndex > cleanupIndex, 'artifact upload must happen only after cleanup')
+
+  const cleanupStep = steps[cleanupIndex]
+  assert.equal(cleanupStep.if, '${{ always() }}',
+    'cleanup must still run when the build step fails')
+  assert.match(cleanupStep.run, /rm -f "\$HOME\/\.startos\/id\.key\.pem" \.startos\/build\.key\.pem/)
+  assert.match(cleanupStep.run, /test ! -e "\$HOME\/\.startos\/id\.key\.pem"/,
+    'cleanup must prove the home-directory key is absent')
+  assert.match(cleanupStep.run, /test ! -e \.startos\/build\.key\.pem/,
+    'cleanup must prove the workspace build key is absent')
+
+  const uploadStep = steps[uploadIndex]
+  assert.notEqual(uploadStep.if, '${{ always() }}',
+    'artifact upload must not be forced to run after a failed cleanup')
 })
