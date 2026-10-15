@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+- Package workflow (`.github/workflows/package.yml`) no longer consumes `Start9Labs/start-technologies/.github/workflows/build.yml` as a reusable workflow. That workflow's own transitive steps invoke `actions/checkout@v6` and `Start9Labs/start-technologies/.github/actions/*@master` by mutable ref, so pinning only its own commit SHA did not make the resulting build trustworthy. The package workflow is now repository-owned: it builds the `x86_64` and `aarch64` candidates directly with every external action pinned to an immutable commit SHA, preserving the existing two-architecture behavior and ephemeral (non-persistent) signing key semantics.
+- Re-pinned `docker/setup-qemu-action`, `docker/setup-docker-action`, and `docker/setup-buildx-action` to their reviewed `v4.4.0`/`v5.5.0`/`v4.4.1` commit SHAs, and `actions/attest-build-provenance` to its reviewed `v4.2.2` commit SHA, in `release-stage.yml`.
+- Extended `.github/scripts/validate-release-workflow.test.js` to also validate `package.yml`: every external action must be pinned to a full commit SHA, and none of `package.yml`, `release-stage.yml`, or `release-promote.yml` may delegate to an externally-owned reusable workflow.
+
 ## [1.0.0-rev14] — 2026-10-16
 
 ### Fixed
