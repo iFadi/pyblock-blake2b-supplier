@@ -15,4 +15,131 @@ concurrency:
 
 jobs:
   build:
-    uses: Start9Labs/start-technologies/.github/workflows/build.yml@f7dcde71be804af424350b48c8b73aba03f41321
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86
+            architecture: x86_64
+            runner: ubuntu-24.04
+            cli_asset: start-cli_x86_64-linux
+            cli_sha256: 830c3b25833fed7cfb16b377172125e35aa75a27a356862776358bd21293023d
+            package_name: pyblock-blake2b-supplier_x86_64.s9pk
+          - target: arm
+            architecture: aarch64
+            runner: ubuntu-24.04-arm
+            cli_asset: start-cli_aarch64-linux
+            cli_sha256: 63b067c3491a29bfbcd0424fff4bc04f6baaf501146b55d495563fc9e98cff0f
+            package_name: pyblock-blake2b-supplier_aarch64.s9pk
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    permissions:
+      contents: read
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install build dependencies
+        run: |
+          set -euo pipefail
+          grep -rl 'packages\.microsoft\.com' /etc/apt/sources.list.d/ 2>/dev/null \
+            | sudo xargs -r rm -f || true
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends \
+            build-essential \
+            clang \
+            libclang-dev \
+            qemu-user-static \
+            squashfs-tools-ng
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+
+      - name: Set up Docker with containerd image store
+        uses: docker/setup-docker-action@2bf61fb9464cc67f0cbdeabed6aa0380accd1c70 # v5.5.0
+        with:
+          daemon-config: |
+            {
+              "features": {
+                "containerd-snapshotter": true
+              }
+            }
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Verify Docker packaging prerequisites
+        run: |
+          set -euo pipefail
+          docker version
+          docker buildx version
+          docker info --format '{{json .DriverStatus}}' | grep -Fq 'io.containerd.snapshotter.v1'
+
+      - name: Install verified start-cli v2.0.0
+        env:
+          START_CLI_ASSET: ${{ matrix.cli_asset }}
+          START_CLI_SHA256: ${{ matrix.cli_sha256 }}
+          START_CLI_VERSION: 2.0.0
+        run: |
+          set -euo pipefail
+          download_path="$(mktemp)"
+          trap 'rm -f "$download_path"' EXIT
+          download_url="https://github.com/Start9Labs/start-technologies/releases/download/start-cli%2Fv${START_CLI_VERSION}/${START_CLI_ASSET}"
+          curl --fail --location --proto '=https' --tlsv1.2 \
+            --output "$download_path" "$download_url"
+          printf '%s  %s\n' "$START_CLI_SHA256" "$download_path" | sha256sum --check --strict -
+          sudo install --mode 0755 "$download_path" /usr/local/bin/start-cli
+          start-cli --version
+
+      - name: Install package dependencies
+        run: npm ci
+
+      - name: Generate ephemeral signing key
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir -p "$HOME/.startos" .startos
+          start-cli init-key
+          cp "$HOME/.startos/id.key.pem" .startos/build.key.pem
+          chmod 0600 "$HOME/.startos/id.key.pem" .startos/build.key.pem
+
+      - name: Build candidate package
+        env:
+          BUILD_TARGET: ${{ matrix.target }}
+          EXPECTED_PACKAGE: ${{ matrix.package_name }}
+        run: |
+          set -euo pipefail
+          RUST_LOG=debug RUST_BACKTRACE=1 make "$BUILD_TARGET"
+
+          mapfile -t packages < <(find . -maxdepth 1 -type f -name '*.s9pk' -printf '%f\n' | sort)
+          if [[ ${#packages[@]} -ne 1 || "${packages[0]:-}" != "$EXPECTED_PACKAGE" ]]; then
+            printf '::error::Expected only %s; found: %s\n' "$EXPECTED_PACKAGE" "${packages[*]:-none}"
+            exit 1
+          fi
+          test -s "$EXPECTED_PACKAGE"
+
+      - name: Clean up ephemeral signing key
+        if: ${{ always() }}
+        run: |
+          set -euo pipefail
+          rm -f "$HOME/.startos/id.key.pem" .startos/build.key.pem
+          rmdir "$HOME/.startos" .startos 2>/dev/null || true
+          test ! -e "$HOME/.startos/id.key.pem"
+          test ! -e .startos/build.key.pem
+
+      - name: Upload candidate package artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: package-${{ matrix.architecture }}
+          path: ./${{ matrix.package_name }}
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 1

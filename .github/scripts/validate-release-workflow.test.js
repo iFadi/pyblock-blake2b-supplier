@@ -4,12 +4,21 @@ const { readFileSync } = require('node:fs')
 const { test } = require('node:test')
 const yaml = require('js-yaml-patched')
 
+const packagePath = '.github/workflows/package.yml'
 const stagePath = '.github/workflows/release-stage.yml'
 const promotePath = '.github/workflows/release-promote.yml'
+const packageWorkflow = readFileSync(packagePath, 'utf8')
 const stage = readFileSync(stagePath, 'utf8')
 const promote = readFileSync(promotePath, 'utf8')
+const packageDocument = yaml.load(packageWorkflow)
 const stageDocument = yaml.load(stage)
 const promoteDocument = yaml.load(promote)
+
+const pipelineWorkflows = [
+  [packagePath, packageWorkflow],
+  [stagePath, stage],
+  [promotePath, promote],
+]
 
 function matches(source, pattern) {
   return [...source.matchAll(pattern)].map((match) => match[1])
@@ -95,7 +104,7 @@ test('parsed workflow semantics preserve least privilege and phase separation', 
 })
 
 test('every embedded workflow shell program parses as Bash', () => {
-  for (const [path, document] of [[stagePath, stageDocument], [promotePath, promoteDocument]]) {
+  for (const [path, document] of [[packagePath, packageDocument], [stagePath, stageDocument], [promotePath, promoteDocument]]) {
     for (const [jobName, job] of Object.entries(document.jobs)) {
       for (const step of job.steps) {
         if (!step.run) continue
@@ -125,7 +134,7 @@ test('staging is source-pinned, secret-isolated, two-architecture, and non-publi
   assert.match(stage, /runtimeApkClosureSha256/)
   assert.match(stage, /pythonRuntimeRequirementsSha256/)
   assert.match(stage, /sha256sum --check --strict/)
-  assert.match(stage, /actions\/attest-build-provenance@[0-9a-f]{40} # v3/)
+  assert.match(stage, /actions\/attest-build-provenance@[0-9a-f]{40} # v4\.2\.2/)
   assert.match(stage, /retention-days: 3/)
   assert.doesNotMatch(stage, /gh release create/)
   assert.doesNotMatch(stage, /contents: write/)
@@ -175,11 +184,74 @@ test('promotion cannot build or access the persistent signing key', () => {
 })
 
 test('every external workflow dependency is immutable', () => {
-  for (const [path, workflow] of [[stagePath, stage], [promotePath, promote]]) {
+  for (const [path, workflow] of pipelineWorkflows) {
     const uses = matches(workflow, /^\s*uses:\s*[^@\s]+@([^\s]+)(?:\s+#.*)?$/gm)
     assert.ok(uses.length > 0, `${path} must use pinned actions`)
     for (const ref of uses) {
       assert.match(ref, /^[0-9a-f]{40}$/, `${path} contains mutable action ref ${ref}`)
     }
   }
+})
+
+test('package, release-stage, and release-promote never delegate to an externally-owned reusable workflow', () => {
+  for (const [path, workflow] of pipelineWorkflows) {
+    assert.doesNotMatch(
+      workflow,
+      /^\s*uses:\s*[^./\s][^\s]*\/[^\s]+\/\.github\/workflows\/[^\s]+\.ya?ml@/m,
+      `${path} must not reintroduce a third-party reusable-workflow trust boundary`,
+    )
+  }
+})
+
+test('package builds both architectures directly with pinned actions and an ephemeral key', () => {
+  assert.deepEqual(Object.keys(packageDocument.jobs), ['build'])
+  assert.deepEqual(packageDocument.permissions, { contents: 'read' })
+  assert.deepEqual(packageDocument.jobs.build.permissions, { contents: 'read' })
+  exactly(packageWorkflow, /^\s{12}architecture:\s*(x86_64|aarch64)\s*$/gm,
+    ['x86_64', 'aarch64'], 'package architecture matrix must be exact')
+  assert.match(packageWorkflow, /docker\/setup-qemu-action@[0-9a-f]{40}/)
+  assert.match(packageWorkflow, /docker\/setup-docker-action@[0-9a-f]{40}/)
+  assert.match(packageWorkflow, /docker\/setup-buildx-action@[0-9a-f]{40}/)
+  assert.match(packageWorkflow, /make "\$BUILD_TARGET"/)
+  assert.match(packageWorkflow, /start-cli init-key/)
+  assert.doesNotMatch(packageWorkflow, /DEV_KEY/)
+  assert.doesNotMatch(packageWorkflow, /secrets\./)
+  assert.match(packageWorkflow, /umask 077/)
+  assert.match(packageWorkflow, /chmod 0600 "\$HOME\/\.startos\/id\.key\.pem" \.startos\/build\.key\.pem/)
+})
+
+test('package checkout does not persist credentials for untrusted PR builds', () => {
+  const checkoutStep = packageDocument.jobs.build.steps.find(
+    (step) => typeof step.uses === 'string' && step.uses.startsWith('actions/checkout@'),
+  )
+  assert.ok(checkoutStep, 'package.yml must check out source')
+  assert.equal(checkoutStep.with?.['persist-credentials'], false,
+    'checkout must not persist credentials that untrusted PR build steps could read from git config')
+})
+
+test('package cleans up the ephemeral signing key after build and before artifact upload, even on failure', () => {
+  const steps = packageDocument.jobs.build.steps
+  const buildIndex = steps.findIndex((step) => step.name === 'Build candidate package')
+  const cleanupIndex = steps.findIndex((step) => step.name === 'Clean up ephemeral signing key')
+  const uploadIndex = steps.findIndex(
+    (step) => typeof step.uses === 'string' && step.uses.startsWith('actions/upload-artifact@'),
+  )
+  assert.ok(buildIndex !== -1, 'package.yml must contain the build step')
+  assert.ok(cleanupIndex !== -1, 'package.yml must contain a signing-key cleanup step')
+  assert.ok(uploadIndex !== -1, 'package.yml must contain the artifact upload step')
+  assert.ok(cleanupIndex > buildIndex, 'cleanup must run after the build step')
+  assert.ok(uploadIndex > cleanupIndex, 'artifact upload must happen only after cleanup')
+
+  const cleanupStep = steps[cleanupIndex]
+  assert.equal(cleanupStep.if, '${{ always() }}',
+    'cleanup must still run when the build step fails')
+  assert.match(cleanupStep.run, /rm -f "\$HOME\/\.startos\/id\.key\.pem" \.startos\/build\.key\.pem/)
+  assert.match(cleanupStep.run, /test ! -e "\$HOME\/\.startos\/id\.key\.pem"/,
+    'cleanup must prove the home-directory key is absent')
+  assert.match(cleanupStep.run, /test ! -e \.startos\/build\.key\.pem/,
+    'cleanup must prove the workspace build key is absent')
+
+  const uploadStep = steps[uploadIndex]
+  assert.notEqual(uploadStep.if, '${{ always() }}',
+    'artifact upload must not be forced to run after a failed cleanup')
 })
