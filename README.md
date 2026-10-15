@@ -134,12 +134,16 @@ StartOS device
 | `starting` | Starting | Supplier has started; first publish not yet sent |
 | `node_unavailable` | Failure | RPC unreachable or credentials rejected |
 | `gbt_unsupported` | Failure | Node rejected the `blake2b` GBT rule |
-| `tor_unavailable` | Failure | Tor selected but circuit could not be built |
+| `tor_unavailable` | Failure | Local Tor proxy is unavailable or cannot build a circuit |
+| `pyblock_unreachable` | Failure | Tor answered, but the configured PyBLOCK onion target could not be reached |
 | `pyblock_rejected` | Failure | PyBLOCK rejected the template (often: OP_RETURN in mempool) |
 | `config_error` | Failure | Missing or invalid configuration value |
 
 The health check fails closed: it reports success only when the recorded
 state is fresh (≤60 s) and the supplier process is still alive.
+Tor readiness uses short, heartbeat-safe connection attempts inside the longer
+startup retry window, so an unreachable onion target is not misreported as a
+stalled supplier process. Tor mode never falls back to clearnet.
 
 ---
 

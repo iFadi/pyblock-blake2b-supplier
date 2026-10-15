@@ -148,11 +148,19 @@ def _await_tor(health: HealthState, config: Config) -> None:
     """
     host, port = config.pyblock_endpoint
     log.info("Verifying Tor can reach %s:%d before publishing", host, port)
+    last_logged_reason = ""
+    last_logged_at = 0.0
 
-    def _progress(reason: str) -> None:
-        health.set("tor_unavailable", reason)
+    def _progress(error: tor.TorUnavailableError) -> None:
+        nonlocal last_logged_reason, last_logged_at
+        reason = str(error)
+        health.set(error.health_state, reason)
         write_health(health)
-        log.info("Waiting for Tor: %s", reason)
+        now = time.monotonic()
+        if reason != last_logged_reason or now - last_logged_at >= 60:
+            log.info("Waiting for Tor: %s", reason)
+            last_logged_reason = reason
+            last_logged_at = now
 
     while True:
         try:
@@ -161,8 +169,8 @@ def _await_tor(health: HealthState, config: Config) -> None:
             return
         except tor.TorUnavailableError as e:
             msg = str(e)
-            log.error("Tor unusable — refusing clearnet fallback: %s", msg)
-            health.set("tor_unavailable", msg)
+            log.error("Tor route unavailable — refusing clearnet fallback: %s", msg)
+            health.set(e.health_state, msg)
             write_health(health)
             time.sleep(RETRY_INTERVAL_S)
 

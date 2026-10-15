@@ -37,6 +37,7 @@ STATES = {
     "node_unsynced":     ("failing", "Bitcoin node is syncing (IBD in progress)"),
     "gbt_unsupported":   ("failing", "getblocktemplate rejected blake2b rule — node is not BLAKE2b-capable"),
     "tor_unavailable":   ("failing", "Tor requested but tor daemon is not ready — refusing clearnet fallback"),
+    "pyblock_unreachable": ("failing", "Tor is responding but the PyBLOCK publish target is unreachable"),
     "pyblock_rejected":  ("failing", "PyBLOCK rejected the last template"),
     "healthy_active":    ("passing", "Template accepted — active on PyBLOCK Carousel"),
     "stopped":           ("failing", "Service stopped"),

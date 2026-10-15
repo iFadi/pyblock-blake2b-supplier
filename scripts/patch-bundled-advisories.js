@@ -10,7 +10,8 @@
  * lockfile declares.
  *
  * Advisories addressed:
- *   brace-expansion: GHSA-3jxr-9vmj-r5cp, GHSA-mh99-v99m-4gvg, GHSA-rgw5-rvv9-x895
+ *   brace-expansion: GHSA-3jxr-9vmj-r5cp, GHSA-mh99-v99m-4gvg, GHSA-rgw5-rvv9-x895,
+ *                    GHSA-q2hr-2g5m-vwhr, GHSA-qhr7-859c-m2p7, GHSA-6j4f-fj2g-mc7p
  *   js-yaml:         GHSA-52cp-r559-cp3m, GHSA-5p4m-2wfm-xmqj, GHSA-2883-xcg3-v3hh
  *
  * Remove this script once @start9labs/start-sdk ships these deps at patched versions.
@@ -29,10 +30,10 @@ if (!existsSync(SDK_NM)) {
 }
 
 const patches = [
-  ['@eslint/config-array/node_modules/brace-expansion',                 'brace-expansion-v1', 'brace-expansion', '1.1.18'],
-  ['@eslint/eslintrc/node_modules/brace-expansion',                     'brace-expansion-v1', 'brace-expansion', '1.1.18'],
-  ['eslint/node_modules/brace-expansion',                               'brace-expansion-v1', 'brace-expansion', '1.1.18'],
-  ['@typescript-eslint/typescript-estree/node_modules/brace-expansion', 'brace-expansion-v5', 'brace-expansion', '5.0.9'],
+  ['@eslint/config-array/node_modules/brace-expansion',                 'brace-expansion-v1', 'brace-expansion', '1.1.21'],
+  ['@eslint/eslintrc/node_modules/brace-expansion',                     'brace-expansion-v1', 'brace-expansion', '1.1.21'],
+  ['eslint/node_modules/brace-expansion',                               'brace-expansion-v1', 'brace-expansion', '1.1.21'],
+  ['@typescript-eslint/typescript-estree/node_modules/brace-expansion', 'brace-expansion-v5', 'brace-expansion', '5.0.12'],
   ['@eslint/eslintrc/node_modules/js-yaml',                             'js-yaml-patched',    'js-yaml',         '4.3.2'],
 ];
 

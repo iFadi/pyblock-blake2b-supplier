@@ -16,10 +16,10 @@ const expectedApks = [
   'libcap2=2.78-r0',
   'libevent=2.1.13-r0',
   'libmd=1.2.0-r0',
-  'libseccomp=2.6.0-r2',
+  'libseccomp=2.6.1-r0',
   'netcat-openbsd=1.234.1-r0',
   'su-exec=0.3-r0',
-  'tor=0.4.9.11-r0',
+  'tor=0.4.9.14-r0',
   'zstd-libs=1.5.7-r2',
 ]
 
@@ -57,12 +57,12 @@ test('the complete runtime APK addition set is exact and Tor is artifact-hashed'
     nonemptyLines('docker/tor-apk-sha256.lock').map((line) => line.split(' ')),
   )
   assert.deepEqual(torHashes, {
-    aarch64: '212e8e837ec2fc774efd0de72c7e99ffc3b940ed069bf78e37cd7e6dd8b9ea03',
-    x86_64: '61bc9aea9de0fffae3c9a7eb437d288cb6007fff768d2b67c696f66702256efb',
+    aarch64: '3b6bc9df16b3bbb810b4d1c8d6cd5bb678c575de243c16e0696e66b1a90386c5',
+    x86_64: '843ebbda186ed11ac432557a83f2808cc313361a92ad10620bf956dc00b29057',
   })
 
   const installer = readFileSync('scripts/install-runtime-apks.sh', 'utf8')
-  assert.match(installer, /tor_version=0\.4\.9\.11-r0/)
+  assert.match(installer, /tor_version=0\.4\.9\.14-r0/)
   assert.match(installer, /sha256sum (?:--check|-c)/)
   assert.match(installer, /amd64\) alpine_arch=x86_64/)
   assert.match(installer, /arm64\) alpine_arch=aarch64/)
