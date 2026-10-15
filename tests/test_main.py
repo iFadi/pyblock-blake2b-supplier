@@ -5,7 +5,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from supplier.health import HealthState
-from supplier.main import _node_sync_status, run
+from supplier.main import _await_tor, _node_sync_status, run
+from supplier.tor import PublishTargetUnavailableError
 
 
 @pytest.mark.parametrize(
@@ -41,6 +42,30 @@ def test_node_sync_status_is_stateless_for_legitimate_reorgs():
         "headers": 970533,
         "initialblockdownload": False,
     })[:2] == (True, 970533)
+
+
+def test_await_tor_records_target_outage_without_going_stale():
+    config = MagicMock()
+    config.pyblock_endpoint = ("example.onion", 80)
+    health = HealthState()
+    recorded_states = []
+
+    def wait_until_ready(host, port, on_wait):
+        assert (host, port) == ("example.onion", 80)
+        on_wait(PublishTargetUnavailableError("onion service introduction failed"))
+
+    def record_health(state):
+        recorded_states.append((state.state, state.message, state.updated_at))
+
+    with (
+        patch("supplier.main.tor.wait_until_ready", side_effect=wait_until_ready),
+        patch("supplier.main.write_health", side_effect=record_health),
+    ):
+        _await_tor(health, config)
+
+    assert recorded_states
+    assert recorded_states[-1][0] == "pyblock_unreachable"
+    assert "introduction failed" in recorded_states[-1][1]
 
 
 def test_loop_refuses_stale_template_then_resumes_when_headers_are_caught_up():

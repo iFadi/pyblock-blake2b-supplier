@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Fixed
+- Bound each Tor readiness attempt to 10 seconds inside the existing 180-second readiness window, preventing a live supplier from crossing the 60-second health staleness threshold while a target is unavailable.
+- Refresh failing health before blocking Tor probes and preserve the precise dependency failure across retries.
+- Distinguish a local Tor failure from a PyBLOCK publish target that Tor cannot reach.
+- Suppress duplicate application progress logs while continuing to refresh the health record on every attempt.
+- Preserve fail-closed Tor behavior; no automatic clearnet fallback was added.
+
 ## [1.0.0-rev13] — 2026-09-11
 
 ### Added

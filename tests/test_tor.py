@@ -8,13 +8,20 @@ smoke test exists to turn silent non-routing into a health failure).
 import socket
 import struct
 import threading
+import time
 from contextlib import contextmanager
 from unittest.mock import patch
 
 import pytest
 
 from supplier import tor
-from supplier.tor import TorUnavailableError, sentinel_present, smoke_test, socks_port_open
+from supplier.tor import (
+    PublishTargetUnavailableError,
+    TorUnavailableError,
+    sentinel_present,
+    smoke_test,
+    socks_port_open,
+)
 
 
 def _recv(conn, n):
@@ -119,8 +126,18 @@ def test_connect_failure_is_reported_with_a_readable_reason(code, fragment):
         conn.sendall(bytes([0x05, code, 0x00, 0x01]) + b"\x00\x00\x00\x00\x00\x00")
 
     with fake_proxy(handler) as (port, _):
-        with pytest.raises(TorUnavailableError, match=fragment):
+        with pytest.raises(PublishTargetUnavailableError, match=fragment):
             smoke_test(ONION, 80, timeout=5, proxy_port=port)
+
+
+def test_target_timeout_is_distinct_from_local_proxy_failure():
+    def handler(conn, captured):
+        _read_connect(conn, captured)
+        time.sleep(0.2)
+
+    with fake_proxy(handler) as (port, _):
+        with pytest.raises(PublishTargetUnavailableError, match="timed out"):
+            smoke_test(ONION, 80, timeout=0.05, proxy_port=port)
 
 
 def test_non_socks5_proxy_is_rejected():
@@ -194,23 +211,60 @@ def test_wait_until_ready_times_out_without_the_sentinel(tmp_path):
 
 
 def test_wait_until_ready_reports_progress_while_waiting(tmp_path):
-    reasons = []
+    errors = []
     with pytest.raises(TorUnavailableError):
         tor.wait_until_ready(
             ONION, 80, timeout=0.3, poll_interval=0.05,
-            on_wait=reasons.append, sentinel_path=str(tmp_path / "never"),
+            on_wait=errors.append, sentinel_path=str(tmp_path / "never"),
         )
-    assert reasons
-    assert all("tor daemon" in r for r in reasons)
+    assert errors
+    assert all("tor daemon" in str(error) for error in errors)
 
 
 def test_wait_until_ready_returns_once_a_circuit_is_proven(tmp_path):
     sentinel = tmp_path / ".tor-ready"
     sentinel.write_text("")
+    progress = []
+
+    def probe(*args, **kwargs):
+        assert progress, "health must be refreshed before entering a blocking probe"
+
     with patch("supplier.tor.socks_port_open", return_value=True), \
-         patch("supplier.tor.smoke_test") as fake:
-        tor.wait_until_ready(ONION, 80, timeout=5, sentinel_path=str(sentinel))
+         patch("supplier.tor.smoke_test", side_effect=probe) as fake:
+        tor.wait_until_ready(
+            ONION,
+            80,
+            timeout=5,
+            attempt_timeout=2,
+            on_wait=progress.append,
+            sentinel_path=str(sentinel),
+        )
     fake.assert_called_once()
+    assert fake.call_args.kwargs["timeout"] <= 2
+    assert "Checking Tor route" in str(progress[0])
+
+
+def test_wait_until_ready_preserves_target_failure_at_deadline(tmp_path):
+    sentinel = tmp_path / ".tor-ready"
+    sentinel.write_text("")
+
+    with patch("supplier.tor.socks_port_open", return_value=True), \
+         patch(
+             "supplier.tor.smoke_test",
+             side_effect=PublishTargetUnavailableError("host unreachable"),
+         ):
+        with pytest.raises(
+            PublishTargetUnavailableError,
+            match="publish target was not reachable",
+        ):
+            tor.wait_until_ready(
+                ONION,
+                80,
+                timeout=0.05,
+                poll_interval=0.01,
+                attempt_timeout=0.01,
+                sentinel_path=str(sentinel),
+            )
 
 
 def test_wait_until_ready_retries_a_failing_smoke_test(tmp_path):
@@ -233,9 +287,9 @@ def test_wait_until_ready_retries_a_failing_smoke_test(tmp_path):
 def test_socks_port_down_is_reported_as_the_reason(tmp_path):
     sentinel = tmp_path / ".tor-ready"
     sentinel.write_text("")
-    reasons = []
+    errors = []
     with patch("supplier.tor.socks_port_open", return_value=False):
         with pytest.raises(TorUnavailableError, match="not accepting connections"):
             tor.wait_until_ready(ONION, 80, timeout=0.2, poll_interval=0.05,
-                                 on_wait=reasons.append, sentinel_path=str(sentinel))
-    assert reasons and "not accepting connections" in reasons[0]
+                                 on_wait=errors.append, sentinel_path=str(sentinel))
+    assert errors and "not accepting connections" in str(errors[0])

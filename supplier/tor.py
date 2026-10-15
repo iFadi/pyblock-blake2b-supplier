@@ -32,6 +32,10 @@ TOR_READY_SENTINEL = os.environ.get("PYBLOCK_TOR_SENTINEL", "/tmp/.tor-ready")
 # descriptors can take a while to fetch on a cold start.
 TOR_READY_TIMEOUT_S = float(os.environ.get("PYBLOCK_TOR_TIMEOUT_S", "180"))
 TOR_POLL_INTERVAL_S = float(os.environ.get("PYBLOCK_TOR_POLL_S", "3"))
+# Keep one target probe well below the 60-second health staleness threshold.
+# The overall readiness window remains long enough for cold-start descriptor
+# fetches; only each individual blocking socket attempt is bounded here.
+TOR_ATTEMPT_TIMEOUT_S = float(os.environ.get("PYBLOCK_TOR_ATTEMPT_TIMEOUT_S", "10"))
 
 # SOCKS5 reply codes (RFC 1928 §6) plus tor's onion-specific extensions.
 _SOCKS5_ERRORS = {
@@ -56,6 +60,14 @@ _SOCKS5_ERRORS = {
 
 class TorUnavailableError(Exception):
     """Tor is not usable for routing — never a reason to fall back to clearnet."""
+
+    health_state = "tor_unavailable"
+
+
+class PublishTargetUnavailableError(TorUnavailableError):
+    """The Tor proxy answered, but the configured publish target did not."""
+
+    health_state = "pyblock_unreachable"
 
 
 def sentinel_present(path: str = TOR_READY_SENTINEL) -> bool:
@@ -108,6 +120,7 @@ def smoke_test(
     if len(host_bytes) > 255:
         raise TorUnavailableError(f"Target host is too long for SOCKS5: {target_host!r}")
 
+    target_request_sent = False
     try:
         sock = socket.create_connection((proxy_host, proxy_port), timeout=timeout)
     except OSError as e:
@@ -136,11 +149,12 @@ def smoke_test(
             + struct.pack("!H", target_port)
         )
         sock.sendall(request)
+        target_request_sent = True
 
         _, reply, _, atyp = _recv_exact(sock, 4)
         if reply != 0x00:
             detail = _SOCKS5_ERRORS.get(reply, f"unknown SOCKS5 error {reply:#04x}")
-            raise TorUnavailableError(
+            raise PublishTargetUnavailableError(
                 f"Tor could not open a circuit to {target_host}:{target_port} — {detail}"
             )
 
@@ -156,7 +170,8 @@ def smoke_test(
             raise TorUnavailableError(f"Tor returned an unknown address type {atyp:#04x}")
         _recv_exact(sock, 2)
     except socket.timeout as e:
-        raise TorUnavailableError(
+        error_type = PublishTargetUnavailableError if target_request_sent else TorUnavailableError
+        raise error_type(
             f"Tor timed out building a circuit to {target_host}:{target_port}"
         ) from e
     except OSError as e:
@@ -173,34 +188,64 @@ def wait_until_ready(
     target_port: int = 80,
     timeout: float = TOR_READY_TIMEOUT_S,
     poll_interval: float = TOR_POLL_INTERVAL_S,
+    attempt_timeout: float = TOR_ATTEMPT_TIMEOUT_S,
     on_wait=None,
     sentinel_path: str = TOR_READY_SENTINEL,
 ) -> None:
     """Block until Tor can route to the target, or raise after `timeout`.
 
-    `on_wait(reason)` is invoked once per unsuccessful attempt so the caller can
-    log progress and keep the health state fresh while waiting.
+    `on_wait(error)` is invoked immediately before a potentially blocking probe
+    and after every unsuccessful attempt. The callback receives the typed
+    failure so callers can keep health fresh and distinguish local Tor failure
+    from an unreachable publish target.
     """
     deadline = time.monotonic() + timeout
-    reason = "Tor has not started yet"
+    error = TorUnavailableError("Tor has not started yet")
 
     while True:
         if not sentinel_present(sentinel_path):
-            reason = "Waiting for the tor daemon to signal that its SOCKS port is up"
+            error = TorUnavailableError(
+                "Waiting for the tor daemon to signal that its SOCKS port is up"
+            )
         elif not socks_port_open():
-            reason = f"Tor SOCKS proxy {TOR_PROXY_HOST}:{TOR_PROXY_PORT} is not accepting connections"
+            error = TorUnavailableError(
+                f"Tor SOCKS proxy {TOR_PROXY_HOST}:{TOR_PROXY_PORT} is not accepting connections"
+            )
         else:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
+            if on_wait is not None:
+                # Refresh health immediately before entering a blocking probe.
+                # Once a target-specific failure is known, preserve it across
+                # retries. Otherwise report the route check now that both the
+                # sentinel and SOCKS port are present.
+                if not isinstance(error, PublishTargetUnavailableError):
+                    error = TorUnavailableError(
+                        f"Checking Tor route to {target_host}:{target_port}"
+                    )
+                on_wait(error)
             try:
-                smoke_test(target_host, target_port, timeout=min(timeout, 60.0))
+                smoke_test(
+                    target_host,
+                    target_port,
+                    timeout=min(attempt_timeout, remaining),
+                )
                 return
             except TorUnavailableError as e:
-                reason = str(e)
+                error = e
 
         remaining = deadline - time.monotonic()
         if remaining <= 0:
-            raise TorUnavailableError(
-                f"Tor was not usable within {timeout:.0f}s — {reason}"
-            )
+            break
         if on_wait is not None:
-            on_wait(reason)
+            on_wait(error)
         time.sleep(min(poll_interval, remaining))
+
+    if isinstance(error, PublishTargetUnavailableError):
+        raise PublishTargetUnavailableError(
+            f"PyBLOCK publish target was not reachable within {timeout:.0f}s — {error}"
+        ) from error
+    raise TorUnavailableError(
+        f"Tor was not usable within {timeout:.0f}s — {error}"
+    ) from error
