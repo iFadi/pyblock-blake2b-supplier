@@ -22,10 +22,19 @@ import { sdk } from './sdk.js'
  * permanently unsatisfiable. Node sync and `getblocktemplate` support are
  * checked directly by this package's own health check instead.
  */
-export const setDependencies = sdk.setupDependencies(async ({ effects }) => ({
-  bitcoind: {
-    kind: 'running' as const,
-    versionRange: '*',
-    healthChecks: [],
+const bitcoind = sdk.Dependency.required('bitcoind', {
+  description: i18n(
+    'BLAKE2b-capable Bitcoin full node on this device. Required: the supplier reads getblocktemplate from a local node only.',
+  ),
+  metadata: {
+    // Generic per SDK guidance: name multi-flavor dependencies "Bitcoin",
+    // not the specific fork or build this package actually requires.
+    title: 'Bitcoin',
+    icon: 'https://raw.githubusercontent.com/Start9Labs/bitcoin-core-startos/refs/heads/30.x/dep-icon.svg',
   },
-}))
+  versionRange: '*',
+  kind: 'running',
+  healthChecks: [],
+})
+
+export const dependencies = sdk.Dependencies.of().addDependency(bitcoind)

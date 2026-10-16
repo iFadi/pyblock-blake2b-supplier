@@ -1,7 +1,7 @@
 import { actions } from '../actions/index.js'
 import { config } from '../actions/config.js'
 import { restoreInit } from '../backups.js'
-import { setDependencies } from '../dependencies.js'
+import { dependencies } from '../dependencies.js'
 import { configFile } from '../fileModels/config.yaml.js'
 import { i18n } from '../i18n/index.js'
 import { sdk } from '../sdk.js'
@@ -12,12 +12,12 @@ import { versions } from '../versions/index.js'
  * credentials before StartOS allows the service to start. The task is
  * idempotent and is automatically completed when its Configure action runs.
  */
-export const requireConfiguration = sdk.setupOnInit(async effects => {
+export const requireConfiguration = sdk.setupOnInit(async (effects) => {
   const existing = await configFile.read().const(effects)
   const configured = Boolean(
     existing?.['payout-address'] &&
-      existing?.['rpc-user'] &&
-      existing?.['rpc-password'],
+    existing?.['rpc-user'] &&
+    existing?.['rpc-password'],
   )
 
   if (!configured) {
@@ -32,8 +32,8 @@ export const requireConfiguration = sdk.setupOnInit(async effects => {
 export const init = sdk.setupInit(
   restoreInit,
   versions,
-  setDependencies,
   actions,
+  dependencies,
   requireConfiguration,
 )
 

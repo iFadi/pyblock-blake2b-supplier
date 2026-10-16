@@ -19,12 +19,4 @@ export const manifest = setupManifest({
       arch: ['x86_64', 'aarch64'],
     },
   },
-  dependencies: {
-    bitcoind: {
-      description:
-        'BLAKE2b-capable Bitcoin full node on this device. Required: the supplier reads getblocktemplate from a local node only.',
-      optional: false,
-      s9pk: null,
-    },
-  },
 })

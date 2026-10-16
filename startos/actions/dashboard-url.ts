@@ -26,5 +26,6 @@ export const dashboardUrl = sdk.Action.withoutInput(
     visibility: 'enabled',
   }),
 
-  async ({ effects }) => supplierDashboardResult(() => configFile.read().once()),
+  async ({ effects }) =>
+    supplierDashboardResult(() => configFile.read().once()),
 )

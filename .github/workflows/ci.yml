@@ -30,7 +30,7 @@ jobs:
       - name: Install JavaScript dependencies
         run: npm ci
 
-      - name: Audit postinstall-patched dependency tree for high/critical CVEs
+      - name: Audit dependency tree for high/critical CVEs
         run: npm audit --audit-level=high
 
       - name: Type-check StartOS integration

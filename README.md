@@ -5,7 +5,7 @@
 
 Publishes BLAKE2b block templates from a local Bitcoin Knots node to the
 [PyBLOCK Carousel](https://b.pyblock.xyz:8443/suppliers.php) mining pool.
-Packaged for StartOS 0.4 using the TypeScript Package API.
+Packaged for StartOS 0.4.0.2 or later using the TypeScript Package API.
 
 ---
 
@@ -63,7 +63,7 @@ unavailable.
 
 ## Requirements
 
-- StartOS 0.4 server
+- StartOS 0.4.0.2 or later
 - `bitcoind` (Bitcoin Knots ≥ 29.4.1 with BLAKE2b support) installed and
   running on the same server — required dependency; remote nodes are not supported
 - `datacarrier=0` in your node's `bitcoin.conf` (PyBLOCK rejects templates

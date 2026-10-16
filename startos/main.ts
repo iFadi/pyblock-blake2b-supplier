@@ -76,7 +76,7 @@ export const main = sdk.setupMain(async ({ effects }) => {
     ready: {
       display: i18n('PyBLOCK Publisher'),
       fn: async () => {
-        const res = await sub.exec(HEALTH_CHECK_CMD, {}, 30_000)
+        const res = await sub.exec(HEALTH_CHECK_CMD, { timeout: 30_000 })
         const stdout = res.stdout.toString().trim()
 
         let parsed: unknown

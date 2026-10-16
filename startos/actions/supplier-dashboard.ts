@@ -82,7 +82,9 @@ export const supplierDashboardResult = async (
 
   if (!payoutAddress) {
     return withoutUrl(
-      i18n('Not configured yet. Open Configure and save a payout address first.'),
+      i18n(
+        'Not configured yet. Open Configure and save a payout address first.',
+      ),
     )
   }
 
@@ -106,6 +108,7 @@ export const supplierDashboardResult = async (
       copyable: true,
       qr: false,
       masked: false,
+      launchable: false,
     },
   }
 }
