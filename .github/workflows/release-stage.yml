@@ -193,6 +193,14 @@ jobs:
           chmod 0600 "$HOME/.startos/id.key.pem" .startos/build.key.pem
           unset DEV_KEY
 
+          # The signing key must be created under a restrictive umask, but
+          # packaging must not inherit it: a stricter-than-0022 umask here
+          # leaks into every file `make` creates (ncc's JS bundle included),
+          # shipping an unreadable/untraversable payload. Reset explicitly
+          # rather than relying on whatever the runner's default happens to
+          # be, now that key material is already written and chmod'd.
+          umask 022
+
           RUST_LOG=debug RUST_BACKTRACE=1 make "$BUILD_TARGET"
           cleanup_key
           trap - EXIT
@@ -203,6 +211,11 @@ jobs:
             exit 1
           fi
           test -s "$EXPECTED_PACKAGE"
+
+      - name: Verify packed JavaScript payload permissions
+        env:
+          EXPECTED_PACKAGE: ${{ matrix.package_name }}
+        run: ./scripts/verify-s9pk-permissions.sh "$EXPECTED_PACKAGE"
 
       - name: Inspect package and record dependency inventory
         env:
