@@ -69,6 +69,7 @@ test('a valid stored address yields the exact copyable dashboard URL', async () 
       copyable: true,
       qr: false,
       masked: false,
+      launchable: false,
     },
   })
 })

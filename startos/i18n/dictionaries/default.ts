@@ -49,6 +49,7 @@ const keys = [
   'The stored payout address is not a valid BLAKE2b-chain address, so no dashboard URL can be derived. Open Configure and save a valid address.',
   'The stored configuration could not be read. Open Configure and save it again, then retry.',
   'Copy this URL into a browser to view your supplier status page. It is derived from your payout address.',
+  'BLAKE2b-capable Bitcoin full node on this device. Required: the supplier reads getblocktemplate from a local node only.',
 ] as const
 
 type Key = (typeof keys)[number]
@@ -58,7 +59,8 @@ export const defaultDict = Object.fromEntries(
 ) as Record<Key, number>
 
 export const translations = {
-  en_US: Object.fromEntries(
-    keys.map((key, index) => [index, key]),
-  ) as Record<number, string>,
+  en_US: Object.fromEntries(keys.map((key, index) => [index, key])) as Record<
+    number,
+    string
+  >,
 }

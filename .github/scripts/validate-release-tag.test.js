@@ -12,28 +12,28 @@ function validate(tag) {
   })
 }
 
-test('accepts the exact revision-14 tag', () => {
-  const result = validate('v1.0.0-rev14')
+test('accepts the exact revision-15 tag', () => {
+  const result = validate('v1.0.0-rev15')
   assert.equal(result.status, 0, result.stderr)
-  assert.match(result.stdout, /Validated v1\.0\.0-rev14 against package version 1\.0\.0:14/)
+  assert.match(result.stdout, /Validated v1\.0\.0-rev15 against package version 1\.0\.0:15/)
 })
 
-for (const tag of ['v1.0.0-rev6', 'v1.0.0-rev7', 'v1.0.0-rev8', 'v1.0.0-rev9', 'v1.0.0-rev10', 'v1.0.0-rev11', 'v1.0.0-rev12', 'v1.0.0-rev13']) {
+for (const tag of ['v1.0.0-rev6', 'v1.0.0-rev7', 'v1.0.0-rev8', 'v1.0.0-rev9', 'v1.0.0-rev10', 'v1.0.0-rev11', 'v1.0.0-rev12', 'v1.0.0-rev13', 'v1.0.0-rev14']) {
   test(`rejects prior revision tag ${tag}`, () => {
     const result = validate(tag)
     assert.notEqual(result.status, 0)
-    assert.match(result.stderr, /resolves to 1\.0\.0:(?:6|7|8|9|10|11|12|13).*declares 1\.0\.0:14/)
+    assert.match(result.stderr, /resolves to 1\.0\.0:(?:6|7|8|9|10|11|12|13|14).*declares 1\.0\.0:15/)
   })
 }
 
 test('rejects malformed tags', () => {
-  const result = validate('v1.0.0-rev14-extra')
+  const result = validate('v1.0.0-rev15-extra')
   assert.notEqual(result.status, 0)
   assert.match(result.stderr, /must match/)
 })
 
 test('rejects a valid-shaped version mismatch', () => {
-  const result = validate('v1.0.1-rev14')
+  const result = validate('v1.0.1-rev15')
   assert.notEqual(result.status, 0)
-  assert.match(result.stderr, /resolves to 1\.0\.1:14.*declares 1\.0\.0:14/)
+  assert.match(result.stderr, /resolves to 1\.0\.1:15.*declares 1\.0\.0:15/)
 })
