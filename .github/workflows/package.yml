@@ -117,6 +117,7 @@ jobs:
           EXPECTED_PACKAGE: ${{ matrix.package_name }}
         run: |
           set -euo pipefail
+          umask 022
           RUST_LOG=debug RUST_BACKTRACE=1 make "$BUILD_TARGET"
 
           mapfile -t packages < <(find . -maxdepth 1 -type f -name '*.s9pk' -printf '%f\n' | sort)
@@ -125,6 +126,11 @@ jobs:
             exit 1
           fi
           test -s "$EXPECTED_PACKAGE"
+
+      - name: Verify packed JavaScript payload permissions
+        env:
+          EXPECTED_PACKAGE: ${{ matrix.package_name }}
+        run: ./scripts/verify-s9pk-permissions.sh "$EXPECTED_PACKAGE"
 
       - name: Clean up ephemeral signing key
         if: ${{ always() }}

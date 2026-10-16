@@ -255,3 +255,38 @@ test('package cleans up the ephemeral signing key after build and before artifac
   assert.notEqual(uploadStep.if, '${{ always() }}',
     'artifact upload must not be forced to run after a failed cleanup')
 })
+
+test('both pipelines verify packed JavaScript payload permissions before any artifact is retained', () => {
+  const verifyScriptPattern = /\.\/scripts\/verify-s9pk-permissions\.sh/g
+
+  assert.equal((packageWorkflow.match(verifyScriptPattern) ?? []).length, 1,
+    'package.yml must run the permission-verification script exactly once')
+  assert.equal((stage.match(verifyScriptPattern) ?? []).length, 1,
+    'release-stage.yml must run the permission-verification script exactly once')
+
+  const packageSteps = packageDocument.jobs.build.steps
+  const packageBuildIndex = packageSteps.findIndex((step) => step.name === 'Build candidate package')
+  const packageVerifyIndex = packageSteps.findIndex(
+    (step) => step.name === 'Verify packed JavaScript payload permissions',
+  )
+  const packageUploadIndex = packageSteps.findIndex(
+    (step) => typeof step.uses === 'string' && step.uses.startsWith('actions/upload-artifact@'),
+  )
+  assert.ok(packageVerifyIndex > packageBuildIndex,
+    'package.yml must verify permissions on the packed artifact, after it is built')
+  assert.ok(packageUploadIndex > packageVerifyIndex,
+    'package.yml must verify permissions before the artifact is uploaded')
+
+  const stageSteps = stageDocument.jobs['build-signed'].steps
+  const stageBuildIndex = stageSteps.findIndex((step) => step.name === 'Build and sign candidate once')
+  const stageVerifyIndex = stageSteps.findIndex(
+    (step) => step.name === 'Verify packed JavaScript payload permissions',
+  )
+  const stageUploadIndex = stageSteps.findIndex(
+    (step) => typeof step.uses === 'string' && step.uses.startsWith('actions/upload-artifact@'),
+  )
+  assert.ok(stageVerifyIndex > stageBuildIndex,
+    'release-stage.yml must verify permissions on the signed artifact, after it is built')
+  assert.ok(stageUploadIndex > stageVerifyIndex,
+    'release-stage.yml must verify permissions before the staged artifact is uploaded')
+})
