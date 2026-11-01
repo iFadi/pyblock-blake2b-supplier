@@ -10,9 +10,9 @@
     "build": "rm -rf ./javascript && ncc build startos/index.ts -o ./javascript && find ./javascript -type d -exec chmod 0755 {} + && find ./javascript -type f -exec chmod 0644 {} +"
   },
   "dependencies": {
-    "@start9labs/start-sdk": "3.0.6"
+    "@start9labs/start-sdk": "3.1.1"
   },
   "devDependencies": {
-    "js-yaml": "4.3.2"
+    "js-yaml": "5.5.0"
   }
 }
